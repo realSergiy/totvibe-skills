@@ -14,7 +14,10 @@ Requires [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/).
 
 ```bash
 just sync        # install all deps
-just test        # lint → typecheck → test
-just lint        # ruff
-just tc          # pyright
+just l           # lint
+just tc          # typecheck (lint → typecheck)
+just t           # test (typeckeck -> test)
+just i <name>    # install a skill globally
 ```
+
+Skills that declare a `bin` in `package.json` are automatically linked into PATH via `npm link` during install.

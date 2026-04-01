@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run
+#!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.14"
 # dependencies = ["polars>=1.0", "typer>=0.15", "toon-format @ git+https://github.com/toon-format/toon-python.git"]
