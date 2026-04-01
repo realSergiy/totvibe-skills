@@ -1,0 +1,25 @@
+[project]
+name = "totvibe-skills"
+requires-python = ">=3.14"
+version = "0.1.0"
+
+[dependency-groups]
+test = [
+    "pytest>=8",
+    "polars>=1.0",
+    "typer>=0.15",
+    "toon-format @ git+https://github.com/toon-format/toon-python.git",
+]
+lint = [
+    "ruff>=0.11",
+]
+typecheck = [
+    "pyright>=1.1",
+    "polars>=1.0",
+    "typer>=0.15",
+    "toon-format @ git+https://github.com/toon-format/toon-python.git",
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
