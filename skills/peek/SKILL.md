@@ -51,8 +51,8 @@ constructor: pl.DataFrame(...)
 ## Examples
 
 ```bash
-peek info data/prep/sackmann_matches.parquet
-peek info data/prep/sackmann_matches.parquet -n 10
-peek head data/prep/sackmann_players.parquet -n 50
-peek repr data/prep/sackmann_players.parquet -n 3
+peek info data/sales.parquet
+peek info data/sales.parquet -n 10
+peek head data/users.parquet -n 50
+peek repr data/users.parquet -n 3
 ```
