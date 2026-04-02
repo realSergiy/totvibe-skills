@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 from toon_format import decode as _decode
 
 SKILL_PATH = Path(__file__).resolve().parents[3] / "skills" / "peek" / "peek.py"
-FIXTURE_PATH = Path(__file__).parent / "fixture.parquet"
+FIXTURE_PATH = Path(__file__).parent / "tourney_points.parquet"
 
 
 def _load_peek():

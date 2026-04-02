@@ -21,52 +21,28 @@ def _read(path: Path) -> pl.DataFrame:
     return pl.read_parquet(path)
 
 
-def _df_to_records(df: pl.DataFrame) -> list[dict]:
-    return df.to_dicts()
-
-
-def _schema_dict(df: pl.DataFrame) -> list[dict]:
-    return [{"column": name, "dtype": str(dtype)} for name, dtype in df.schema.items()]
+def _column_types(df: pl.DataFrame) -> list[str]:
+    return [str(dtype) for dtype in df.schema.dtypes()]
 
 
 @app.command()
-def info(
+def main(
     path: Annotated[Path, typer.Argument(help="Path to a parquet file")],
     n: Annotated[int, typer.Option("-n", help="Number of preview rows")] = 2,
+    all_rows: Annotated[bool, typer.Option("-a", help="Show all rows")] = False,
+    types: Annotated[bool, typer.Option("-t", help="Include column types")] = False,
 ) -> None:
-    """Show schema, shape, and a preview of a parquet file."""
+    """Preview a parquet file, optionally with column types."""
     df = _read(path)
-    output = {
-        "rows": df.shape[0],
-        "schema": _schema_dict(df),
-        "preview": _df_to_records(df.head(n)),
-    }
-    print(encode(output))
-
-
-@app.command()
-def head(
-    path: Annotated[Path, typer.Argument(help="Path to a parquet file")],
-    n: Annotated[int, typer.Option("-n", help="Number of rows to show")] = 2,
-) -> None:
-    """Print the first N rows of a parquet file."""
-    df = _read(path).head(n)
-    output = {
-        "rows": _df_to_records(df),
-    }
-    print(encode(output))
-
-
-@app.command(name="repr")
-def repr_cmd(
-    path: Annotated[Path, typer.Argument(help="Path to a parquet file")],
-    n: Annotated[int, typer.Option("-n", help="Number of rows in repr")] = 2,
-) -> None:
-    """Print a copy-pasteable Polars constructor for a parquet file."""
-    df = _read(path).head(n)
-    output = {
-        "constructor": df.to_init_repr(),
-    }
+    total = df.shape[0]
+    show_all = all_rows or n == 0
+    output: dict = {}
+    preview = df if show_all else df.head(n)
+    output[path.stem] = preview.to_dicts()
+    if types:
+        output["types"] = _column_types(df)
+    if not show_all and n < total:
+        output["rows"] = total
     print(encode(output))
 
 

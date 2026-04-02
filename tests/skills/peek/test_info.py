@@ -1,4 +1,4 @@
-"""Integration tests for the peek info command."""
+"""Integration tests for the peek CLI."""
 
 from __future__ import annotations
 
@@ -6,81 +6,87 @@ import pytest
 
 
 def test_exits_successfully(invoke):
-    result = invoke("info")
+    result = invoke()
     assert result.exit_code == 0
 
 
-def test_reports_row_count(invoke, decode):
-    result = invoke("info")
-    assert decode(result.output.strip())["rows"] == 94
+def test_default_output(invoke):
+    result = invoke()
+    assert result.output == (
+        "tourney_points[2]{tourney_category,tourney_level,round,round_of,points}:\n"
+        "  Grand Slam,G2000,F,2,2000\n"
+        "  Grand Slam,G2000,SF,4,800\n"
+        "rows: 94\n"
+    )
 
 
-def test_schema_lists_all_columns(invoke, decode):
-    result = invoke("info")
-    names = [entry["column"] for entry in decode(result.output.strip())["schema"]]
-    assert names == ["tourney_category", "tourney_level", "round", "round_of", "points"]
+def test_n_1(invoke):
+    result = invoke("-n", "1")
+    assert result.output == (
+        "tourney_points[1]{tourney_category,tourney_level,round,round_of,points}:\n"
+        "  Grand Slam,G2000,F,2,2000\n"
+        "rows: 94\n"
+    )
 
 
-def test_schema_includes_dtypes(invoke, decode):
-    result = invoke("info")
-    dtypes = [entry["dtype"] for entry in decode(result.output.strip())["schema"]]
-    assert dtypes == ["String", "String", "String", "Int32", "Int32"]
+def test_n_5(invoke):
+    result = invoke("-n", "5")
+    assert result.output == (
+        "tourney_points[5]{tourney_category,tourney_level,round,round_of,points}:\n"
+        "  Grand Slam,G2000,F,2,2000\n"
+        "  Grand Slam,G2000,SF,4,800\n"
+        "  Grand Slam,G2000,QF,8,400\n"
+        "  Grand Slam,G2000,R16,16,200\n"
+        "  Grand Slam,G2000,R32,32,100\n"
+        "rows: 94\n"
+    )
 
 
-def test_preview_default_length(invoke, decode):
-    result = invoke("info")
-    assert len(decode(result.output.strip())["preview"]) == 2
-
-
-@pytest.mark.parametrize("n", [1, 3, 50])
+@pytest.mark.parametrize("n", [3, 50])
 def test_preview_respects_n(invoke, decode, n):
-    result = invoke("info", "-n", str(n))
-    assert len(decode(result.output.strip())["preview"]) == min(n, 94)
+    result = invoke("-n", str(n))
+    assert len(decode(result.output.strip())["tourney_points"]) == min(n, 94)
 
 
-def test_preview_row_has_correct_keys(invoke, decode):
-    result = invoke("info", "-n", "1")
-    row = decode(result.output.strip())["preview"][0]
-    assert set(row.keys()) == {"tourney_category", "tourney_level", "round", "round_of", "points"}
+def test_n_gte_total_hides_rows(invoke):
+    result = invoke("-n", "94")
+    assert "rows" not in result.output
 
 
-def test_first_row_values(invoke, decode):
-    result = invoke("info", "-n", "1")
-    row = decode(result.output.strip())["preview"][0]
-    assert row["tourney_category"] == "Grand Slam"
-    assert row["tourney_level"] == "G2000"
-    assert row["round"] == "F"
-    assert row["round_of"] == 2
-    assert row["points"] == 2000
+def test_n_greater_than_total_hides_rows(invoke):
+    result = invoke("-n", "200")
+    assert "rows" not in result.output
+
+
+def test_types_flag(invoke):
+    result = invoke("-t")
+    assert result.output == (
+        "tourney_points[2]{tourney_category,tourney_level,round,round_of,points}:\n"
+        "  Grand Slam,G2000,F,2,2000\n"
+        "  Grand Slam,G2000,SF,4,800\n"
+        "types[5]: String,String,String,Int32,Int32\n"
+        "rows: 94\n"
+    )
+
+
+def test_all_rows_no_row_count(invoke, decode):
+    result = invoke("-a")
+    parsed = decode(result.output.strip())
+    assert len(parsed["tourney_points"]) == 94
+    assert "rows" not in parsed
+
+
+def test_all_rows_equivalent_to_n_zero(invoke):
+    result_a = invoke("-a")
+    result_n = invoke("-n", "0")
+    assert result_a.output == result_n.output
 
 
 def test_no_path_exits_with_error(runner, peek):
-    result = runner.invoke(peek.app, ["info"])
+    result = runner.invoke(peek.app, [])
     assert result.exit_code != 0
 
 
 def test_nonexistent_file_exits_with_error(invoke):
-    result = invoke("info", "--", "/nonexistent/file.parquet", use_fixture=False)
+    result = invoke("--", "/nonexistent/file.parquet", use_fixture=False)
     assert result.exit_code != 0
-
-
-def test_output_is_valid_toon(invoke, decode):
-    result = invoke("info")
-    parsed = decode(result.output.strip())
-    assert set(parsed.keys()) == {"rows", "schema", "preview"}
-
-
-def test_output_string(invoke):
-    result = invoke("info")
-    assert result.output == (
-        "rows: 94\n"
-        "schema[5]{column,dtype}:\n"
-        "  tourney_category,String\n"
-        "  tourney_level,String\n"
-        "  round,String\n"
-        "  round_of,Int32\n"
-        "  points,Int32\n"
-        "preview[2]{tourney_category,tourney_level,round,round_of,points}:\n"
-        "  Grand Slam,G2000,F,2,2000\n"
-        "  Grand Slam,G2000,SF,4,800\n"
-    )
