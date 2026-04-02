@@ -2,32 +2,43 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## What This Is
+
+A collection of CLI skills for Claude Code, managed as a Python monorepo with `uv` and `just`.
+
 ## Commands
 
 ```bash
-just sync        # install all deps
+just sync        # install all deps (uv sync --all-groups)
 just l           # lint (ruff)
-just tc          # typecheck (ruff → pyright)
-just t           # test (typecheck → pytest)
-just t tests/skills/peek/test_info.py        # single test file
-just t -k test_exits_successfully            # by keyword
-just i peek      # install skill globally (npx skills add + npm link)
+just tc          # typecheck (pyright) — runs lint first
+just t           # test (pytest) — runs typecheck first, which runs lint first
+just t tests/skills/peek/test_info.py::test_default_output  # run a single test
+just i peek      # install a skill globally via npx skills
+just u peek      # uninstall a skill globally
 ```
 
-The test recipe chains: lint → typecheck → pytest. Use `uv run --group test pytest <args>` to skip the chain.
+The `just t` chain is: lint → typecheck → test. Use `just l` or `just tc` to run partial chains.
 
 ## Architecture
 
-Skills live in `skills/<name>/` with three files:
+Each skill lives in `skills/<name>/` and must contain:
 
-- **SKILL.md** — YAML frontmatter (name, description, user-invocable) + usage docs for agent discovery
-- **package.json** — declares `bin` mapping command name → script; used by `npm link` to make the CLI globally available after install
-- **script.py** — standalone PEP 723 executable with `#!/usr/bin/env -S uv run --script` shebang and inline dependencies; no package structure needed
+- `SKILL.md` — frontmatter with `name`, `description`, `metadata` (version, user-invocable, argument-hint), plus usage docs
+- `<name>.py` — a standalone `uv run --script` CLI with inline script dependencies
 
-Tests mirror the skill path: `tests/skills/<name>/`. Fixtures in `conftest.py` provide a `runner` (Typer CliRunner), `invoke(command, *args)` helper, and `decode()` for TOON output.
+Skills are self-contained Python scripts using inline `uv` script metadata (`# /// script`) so they can run without the project venv. They output **TOON** (Token-Oriented Object Notation) format for LLM-friendly structured output via the `toon-format` package.
 
-## Tooling
+## Testing
 
-- Python >=3.14, managed by **uv** (dependency groups: test, lint, typecheck)
-- **ruff** for linting, **pyright** for type checking — both use defaults, no custom config
-- Skills use TOON format (token-optimized object notation) for LLM-friendly output
+Tests mirror the skill structure: `tests/skills/<name>/`. Each skill's test suite uses `conftest.py` to dynamically import the skill module via `importlib` (not regular imports) and provides fixtures like `invoke` (wraps `typer.testing.CliRunner`).
+
+`tests/test_skills_valid.py` auto-discovers all skills and validates them against the Agent Skills spec using the `skills-ref` package — every skill must pass `validate()` and have non-empty `name`/`description`.
+
+## Key Dependencies
+
+- **polars** — data handling in skills (not pandas)
+- **typer** — CLI framework for skills
+- **toon-format** — TOON encoding/decoding for structured output
+- **skills-ref** — skill validation against the Agent Skills spec
+- Python **3.14+** required
