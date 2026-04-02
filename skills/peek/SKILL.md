@@ -1,14 +1,14 @@
 ---
 name: peek
 description: >
-  Inspect parquet data files — preview rows, column types, row count.
+  Inspect parquet data files — preview rows, schema, unique values, group-by counts, or SQL queries.
   Outputs TOON (token-optimized notation) for efficient LLM consumption.
   Use when exploring datasets, checking column types, or previewing rows.
   ALWAYS use this instead of writing python -c one-liners with polars/pandas.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
   user-invocable: "true"
-  argument-hint: <path> [-n N] [-a] [-t]
+  argument-hint: <path> [-c] [-u col] [-g col] [-q sql] [--cols a,b] [-n N] [-a] [-t]
 ---
 
 # peek — parquet inspection CLI
@@ -17,14 +17,47 @@ NEVER write raw `python -c "import polars ..."` one-liners to inspect parquet fi
 
 Output is **TOON** (Token-Oriented Object Notation) — compact, structured, LLM-friendly.
 
+## Modes
+
+Modes are mutually exclusive — use only one at a time.
+
+| Mode | Flag | Purpose |
+|------|------|---------|
+| Preview | *(default)* | Show first N rows |
+| Schema | `-c` | Columns, types, and row count — no data |
+| Unique | `-u col` | Distinct values of column(s) |
+| Group-by | `-g col` | Group-by counts |
+| SQL | `-q "..."` | Arbitrary SQL (table aliased as `t`) |
+
 ## Usage
 
 ```
-peek <path>              Preview first 2 rows
-peek <path> -n 10        Preview first 10 rows
-peek <path> -a           Show all rows (no truncation)
-peek <path> -t           Include column types after the table
-peek <path> -n 5 -t      Combine options
+# Preview (default mode)
+peek <path>                          # 2 rows
+peek <path> -n 10                    # 10 rows
+peek <path> -a                       # all rows
+peek <path> -t                       # include column types
+peek <path> --cols round,points      # subset columns
+peek <path> --cols round,points -n 5 -t  # combine options
+
+# Schema — columns + types, no data
+peek <path> -c
+
+# Unique values
+peek <path> -u round                 # one column
+peek <path> -u round,surface         # multiple columns
+
+# Group-by counts
+peek <path> -g round                 # one column
+peek <path> -g tourney_level,round   # multiple columns
+
+# SQL (table aliased as t)
+peek <path> -q "SELECT round, COUNT(*) as cnt FROM t GROUP BY round ORDER BY cnt DESC"
+peek <path> -q "SELECT * FROM t WHERE points > 500 LIMIT 5"
+
+# Glob — multiple files
+peek data/prep/*.parquet -c          # schema of each file
+peek data/prep/*.parquet -u round    # unique values from each file
 ```
 
 ## Options
@@ -34,10 +67,13 @@ peek <path> -n 5 -t      Combine options
 | `-n N` | Number of preview rows | 2 |
 | `-a` | Show all rows (equivalent to `-n 0`) | off |
 | `-t` | Append column types | off |
+| `--cols a,b` | Select columns for preview | all |
+| `-c` | Schema mode: columns + types only | off |
+| `-u col` | Unique values of column(s) | off |
+| `-g col` | Group-by column(s) with counts | off |
+| `-q "..."` | SQL query (table aliased as `t`) | off |
 
-## Output
-
-The table key is the **file stem** (filename without `.parquet`).
+## Output examples
 
 Default (`peek data/sales.parquet`):
 ```
@@ -47,20 +83,41 @@ sales[2]{id,name,amount}:
 rows: 1000
 ```
 
-`rows` is shown automatically when the preview is truncated. It is hidden when all rows are displayed (`-a`, `-n 0`, or `-n` >= total rows).
-
-With `-t`:
+Schema (`peek data/sales.parquet -c`):
 ```
-sales[2]{id,name,amount}:
-  1,Alice,50
-  2,Bob,120
-types[3]: Int64,String,Float64
+sales:
+  id: Int64
+  name: String
+  amount: Float64
 rows: 1000
 ```
 
-## When to use
+Unique (`peek data/sales.parquet -u name`):
+```
+name[3]: Alice,Bob,Carol
+```
 
-- Exploring an unfamiliar parquet file — start with `peek <path>`
-- Need column names and types — use `peek <path> -t`
-- Need full data for analysis — use `peek <path> -a`
-- Need more context rows — use `peek <path> -n 20`
+Group-by (`peek data/sales.parquet -g name`):
+```
+group[3]{name,len}:
+  Alice,350
+  Bob,400
+  Carol,250
+```
+
+SQL (`peek data/sales.parquet -q "SELECT name, SUM(amount) as total FROM t GROUP BY name"`):
+```
+result[3]{name,total}:
+  Alice,17500
+  Bob,48000
+  Carol,12500
+```
+
+## When to use which mode
+
+- **Don't know what's in the file?** Start with `peek <path> -c` for schema
+- **Need to see sample data?** `peek <path>` or `peek <path> -n 10`
+- **What values does a column have?** `peek <path> -u col`
+- **How is data distributed?** `peek <path> -g col1,col2`
+- **Complex filtering or aggregation?** `peek <path> -q "SELECT ..."`
+- **Comparing multiple files?** `peek data/*.parquet -c`
