@@ -5,8 +5,10 @@ description: >
   Outputs TOON (token-optimized notation) for efficient LLM consumption.
   Use when exploring datasets, checking column types, or previewing rows.
   ALWAYS use this instead of writing python -c one-liners with polars/pandas.
-user-invocable: true
-argument-hint: <path> [-n N] [-a] [-t]
+metadata:
+  version: "0.2.0"
+  user-invocable: "true"
+  argument-hint: <path> [-n N] [-a] [-t]
 ---
 
 # peek — parquet inspection CLI
