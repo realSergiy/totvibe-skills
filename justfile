@@ -21,3 +21,9 @@ alias i := install
 install name:
     npx skills add . -g --skill {{name}} -y
     test -f "$HOME/.agents/skills/{{name}}/package.json" && (cd "$HOME/.agents/skills/{{name}}" && npm link) || true
+
+alias u := uninstall
+
+uninstall name:
+    test -f "$HOME/.agents/skills/{{name}}/package.json" && (cd "$HOME/.agents/skills/{{name}}" && npm unlink) || true
+    npx skills remove {{name}} -g -y
