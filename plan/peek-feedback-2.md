@@ -1,20 +1,8 @@
-# Feedback 2
-
-## 1. Invocation issue
-
-Agent triend to run peek with
-
-```text
-Bash(python -m peek data/prep/kaggle_players.parquet -c)
-```
-
-Need to make it clear for the coding agent that skill tools can be invoked directly without python like `peek data/prep/kaggle_players.parquet -c`
-
-## 2. Unused calls
+# Unused calls 2
 
 Noticed following cases:
 
-```
+```text
 Bash(uv run python3 -c "
       import polars as pl
       k = pl.read_parquet('data/prep/kaggle_players.parquet')
@@ -53,13 +41,51 @@ Bash(uv run python3 -c "
      │ 85                ┆ Bahrouzyan O. ┆ Bahrouzyan  ┆ O          ┆ bahrouzyan-o  │
      │ 88                ┆ Bailly G.A.   ┆ Bailly      ┆ G.A        ┆ bailly-g2     │
      └───────────────────┴───────────────┴─────────────┴────────────┴───────────────┘
-```
 
-## 3. Failure to run a skill post-install
+Bash(uv run python3 -c "
+      import polars as pl
+      k = pl.read_parquet('data/prep/kaggle_players.parquet')
+      s = pl.read_parquet('data/prep/sackmann_players.parquet')
+      kaggle_only = k.filter(~pl.col('player_code').is_in(s['player_code'].implode()))
 
-I have just installed a skill with `just i` but having:
+      # Look for Cilic and Djokovic in both datasets
+      for name in ['cilic', 'djokovic', 'nadal', 'federer']:
+          print(f'=== {name} ===')
+          krows = k.filter(pl.col('player_code').str.contains(name))
+          srows = s.filter(pl.col('player_code').str.contains(name))
+          ko = kaggle_only.filter(pl.col('player_code').str.contains(name))
+          print(f'Kaggle: {krows.select(\"player_name\", \"name_last\", \"name_first\", \"player_code\").to_dicts()}')
+          print(f'Sackmann: {srows.select(\"name_first\", \"name_last\", \"player_code\").to_dicts()}')
+          print(f'Unmatched: {ko.select(\"player_name\", \"player_code\").to_dicts()}')
+          print()
+      ")
+  ⎿  === cilic ===
+     Kaggle: [{'player_name': 'Cilic M.', 'name_last': 'Cilic', 'name_first': 'M', 'player_code': 'cilic-m'}, {'player_name': 'Cilic
+     M. ', 'name_last': 'Cilic M. ', 'name_first': None, 'player_code': 'cilic-m-x'}]
+     Sackmann: [{'name_first': 'Marin', 'name_last': 'Cilic', 'player_code': 'cilic-m'}, {'name_first': 'Mile', 'name_last': 'Cilic',
+      'player_code': 'cilic-m2'}]
+     Unmatched: [{'player_name': 'Cilic M. ', 'player_code': 'cilic-m-x'}]
 
-```bash
-srg@srg-kub2510-b15a11m:~$ suggest test-skill "blah blah"
-bash: /home/srg/.nvm/versions/node/v24.11.1/bin/suggest: Permission denied
+     === djokovic ===
+     Kaggle: [{'player_name': 'Djokovic M.', 'name_last': 'Djokovic', 'name_first': 'M', 'player_code': 'djokovic-m'},
+     {'player_name': 'Djokovic N.', 'name_last': 'Djokovic', 'name_first': 'N', 'player_code': 'djokovic-n'}, {'player_name':
+     'Djokovic N. ', 'name_last': 'Djokovic N. ', 'name_first': None, 'player_code': 'djokovic-n-x'}]
+     Sackmann: [{'name_first': 'Novak', 'name_last': 'Djokovic', 'player_code': 'djokovic-n'}, {'name_first': 'Marko', 'name_last':
+     'Djokovic', 'player_code': 'djokovic-m'}, {'name_first': 'Djordje', 'name_last': 'Djokovic', 'player_code': 'djokovic-d'}]
+     Unmatched: [{'player_name': 'Djokovic N. ', 'player_code': 'djokovic-n-x'}]
+
+     === nadal ===
+     Kaggle: [{'player_name': 'Nadal R.', 'name_last': 'Nadal', 'name_first': 'R', 'player_code': 'nadal-r'}, {'player_name': 'Nadal
+     R. ', 'name_last': 'Nadal R. ', 'name_first': None, 'player_code': 'nadal-r-x'}, {'player_name': 'Nadal-Parera R.', 'name_last':
+      'Nadal-Parera', 'name_first': 'R', 'player_code': 'nadal-parera-r'}]
+     Sackmann: [{'name_first': 'Rafael', 'name_last': 'Nadal', 'player_code': 'nadal-r'}, {'name_first': 'Jorge', 'name_last':
+     'Nadal', 'player_code': 'nadal-j'}, {'name_first': 'Joan', 'name_last': 'Nadal Vives', 'player_code': 'nadal-vives-j'}]
+     Unmatched: [{'player_name': 'Nadal R. ', 'player_code': 'nadal-r-x'}, {'player_name': 'Nadal-Parera R.', 'player_code':
+     'nadal-parera-r'}]
+
+     === federer ===
+     Kaggle: [{'player_name': 'Federer R.', 'name_last': 'Federer', 'name_first': 'R', 'player_code': 'federer-r'}, {'player_name':
+     'Federer R. ', 'name_last': 'Federer R. ', 'name_first': None, 'player_code': 'federer-r-x'}]
+     Sackmann: [{'name_first': 'Roger', 'name_last': 'Federer', 'player_code': 'federer-r'}]
+     Unmatched: [{'player_name': 'Federer R. ', 'player_code': 'federer-r-x'}]
 ```

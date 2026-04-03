@@ -33,6 +33,7 @@ install name="":
         done
     else
         npx skills add . -g --skill {{name}} -y
+        chmod +x "$HOME/.agents/skills/{{name}}/{{name}}.py"
         test -f "$HOME/.agents/skills/{{name}}/package.json" && (cd "$HOME/.agents/skills/{{name}}" && npm link) || true
     fi
 

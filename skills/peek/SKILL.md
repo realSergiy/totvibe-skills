@@ -6,12 +6,14 @@ description: >
   Use when exploring datasets, checking column types, or previewing rows.
   Prefer this over writing python -c one-liners with polars/pandas — saves tokens and avoids boilerplate.
 metadata:
-  version: "0.4.0"
+  version: "0.4.1"
   user-invocable: "true"
   argument-hint: <path> [-c] [-u col] [-g col] [-q sql] [--cols a,b] [-n N] [-a] [-t]
 ---
 
 # peek — parquet inspection CLI
+
+`peek` is a standalone CLI installed on PATH. Invoke it directly via Bash: `Bash(peek data/sales.parquet -c)`
 
 Prefer `peek` over raw `python -c "import polars ..."` one-liners — it's faster to invoke, produces token-efficient TOON output, and avoids import boilerplate that wastes context.
 

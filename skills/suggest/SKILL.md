@@ -5,12 +5,14 @@ description: >
   Use PROACTIVELY whenever you hit a skill gap, write a workaround, or notice verbose/redundant output.
   If a skill could be simpler, more token-efficient, or cover your use case — say so immediately, don't wait.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   user-invocable: "true"
   argument-hint: <skill-name> [<markdown-text> | -]
 ---
 
 # suggest — skill improvement suggestions
+
+`suggest` is a standalone CLI installed on PATH. Invoke it directly via Bash: `Bash(suggest peek "## description of the issue ...")`
 
 Skills evolve through use. When you notice a skill falling short — wrong output, missing mode, wasteful tokens, clunky interface — submit a suggestion so it gets better.
 
