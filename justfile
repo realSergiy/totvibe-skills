@@ -4,8 +4,9 @@ sync:
 
 alias l := lint
 
-# Run linter (ruff)
+# Run linters (rumdl + ruff), pass --fix to auto-fix
 lint *args:
+    rumdl check {{args}}
     uv run --group lint ruff check {{args}}
 
 alias tc := typecheck

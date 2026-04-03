@@ -31,7 +31,7 @@ Modes are mutually exclusive — use only one at a time.
 
 ## Usage
 
-```
+```text
 # Preview (default mode)
 peek <path>                          # 2 rows
 peek <path> -n 10                    # 10 rows
@@ -76,7 +76,8 @@ peek data/prep/*.parquet -u round    # unique values from each file
 ## Output examples
 
 Default (`peek data/sales.parquet`):
-```
+
+```text
 sales[2]{id,name,amount}:
   1,Alice,50
   2,Bob,120
@@ -84,7 +85,8 @@ rows: 1000
 ```
 
 Schema (`peek data/sales.parquet -c`):
-```
+
+```text
 sales:
   id: Int64
   name: String
@@ -93,12 +95,14 @@ rows: 1000
 ```
 
 Unique (`peek data/sales.parquet -u name`):
-```
+
+```text
 name[3]: Alice,Bob,Carol
 ```
 
 Group-by (`peek data/sales.parquet -g name`):
-```
+
+```text
 group[3]{name,len}:
   Alice,350
   Bob,400
@@ -106,7 +110,8 @@ group[3]{name,len}:
 ```
 
 SQL (`peek data/sales.parquet -q "SELECT name, SUM(amount) as total FROM t GROUP BY name"`):
-```
+
+```text
 result[3]{name,total}:
   Alice,17500
   Bob,48000

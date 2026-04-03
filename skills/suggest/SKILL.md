@@ -36,7 +36,7 @@ Structure your suggestion around these five questions. Be concrete — vague sug
 
 ## Usage
 
-```
+```text
 suggest <skill-name> "<markdown text>"           # inline text
 suggest <skill-name> -                           # read from stdin
 ```
@@ -66,6 +66,6 @@ Cuts token usage ~5x for multi-file schema scans — the most common first step 
 
 ## Output
 
-```
+```text
 saved: ~/Documents/skill-suggestions/peek/suggestion_20260403_141523_012345.md
 ```
