@@ -1,0 +1,7 @@
+{
+  "name": "suggest",
+  "version": "0.1.0",
+  "bin": {
+    "suggest": "./suggest.py"
+  }
+}
