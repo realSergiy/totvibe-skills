@@ -1,16 +1,19 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.14"
-# dependencies = ["typer>=0.15"]
+# dependencies = ["typer>=0.15", "toon-format>=0.9.0b1"]
 # ///
 """Submit structured improvement suggestions for CLI skills — bugs, gaps, inefficiencies."""
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Annotated
 
 import typer
+from toon_format import encode
 
 app = typer.Typer()
 
@@ -19,24 +22,32 @@ SUGGEST_DIR = Path.home() / "Documents" / "skill-suggestions"
 
 def _save(skill: str, text: str) -> Path:
     """Save suggestion markdown to timestamped file. Returns the path."""
-    dest = SUGGEST_DIR / skill
-    dest.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    path = dest / f"suggestion_{ts}.md"
+    skill_dir = SUGGEST_DIR / skill
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    path = skill_dir / f"suggestion_{ts}.md"
     path.write_text(text + "\n")
     return path
 
 
 @app.command()
 def main(
-    skill: str = typer.Argument(help="Name of the skill to improve"),
-    text: str = typer.Argument(
-        help="Markdown: Context, Gap, Responsibility, Suggestion, Impact"
-    ),
+    skill: Annotated[str, typer.Argument(help="Name of the skill to improve")],
+    text: Annotated[
+        str | None,
+        typer.Argument(
+            help="Markdown: Context, Gap, Responsibility, Suggestion, Impact. Use '-' to read from stdin."
+        ),
+    ] = None,
 ) -> None:
     """Submit a structured improvement suggestion for a skill — what fell short and what should change."""
+    if text is None or text == "-":
+        text = sys.stdin.read()
+    assert text is not None
+    if not text.strip():
+        raise typer.BadParameter("Suggestion text cannot be empty")
     path = _save(skill, text)
-    print(f"saved: {path}")
+    print(encode({"saved": str(path)}))
 
 
 if __name__ == "__main__":

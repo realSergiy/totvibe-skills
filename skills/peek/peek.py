@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.14"
-# dependencies = ["polars>=1.0", "typer>=0.15", "toon-format @ git+https://github.com/toon-format/toon-python.git"]
+# dependencies = ["polars>=1.0", "typer>=0.15", "toon-format>=0.9.0b1"]
 # ///
 """Quick parquet inspection CLI."""
 
@@ -18,12 +18,21 @@ from toon_format import encode
 app = typer.Typer()
 
 
-def _read(path: Path) -> pl.DataFrame:
-    return pl.read_parquet(path)
-
-
 def _column_types(df: pl.DataFrame) -> list[str]:
     return [str(dtype) for dtype in df.schema.dtypes()]
+
+
+def _split_cols(s: str) -> list[str]:
+    return [c.strip() for c in s.split(",")]
+
+
+def _validate_columns(df: pl.DataFrame, columns: list[str]) -> None:
+    available = set(df.schema.names())
+    bad = [c for c in columns if c not in available]
+    if bad:
+        raise typer.BadParameter(
+            f"Column(s) not found: {', '.join(bad)}. Available: {', '.join(df.schema.names())}"
+        )
 
 
 def _resolve_paths(pattern: str) -> list[Path]:
@@ -41,16 +50,16 @@ def _resolve_paths(pattern: str) -> list[Path]:
 def _preview(df: pl.DataFrame, stem: str, n: int, all_rows: bool, types: bool, cols: str | None) -> dict:
     """Build TOON output dict for preview mode."""
     if cols:
-        col_list = [c.strip() for c in cols.split(",")]
+        col_list = _split_cols(cols)
+        _validate_columns(df, col_list)
         df = df.select(col_list)
     total = df.shape[0]
-    show_all = all_rows or n == 0
     output: dict = {}
-    preview = df if show_all else df.head(n)
+    preview = df if all_rows else df.head(n)
     output[stem] = preview.to_dicts()
     if types:
         output["types"] = _column_types(df)
-    if not show_all and n < total:
+    if not all_rows and n < total:
         output["rows"] = total
     return output
 
@@ -64,8 +73,10 @@ def _schema(df: pl.DataFrame, stem: str) -> dict:
 
 def _unique(df: pl.DataFrame, columns: str) -> dict:
     """Build TOON output dict for unique-values mode."""
+    col_list = _split_cols(columns)
+    _validate_columns(df, col_list)
     output: dict = {}
-    for col_name in (c.strip() for c in columns.split(",")):
+    for col_name in col_list:
         values = df[col_name].drop_nulls().unique().sort().to_list()
         output[col_name] = values
     return output
@@ -73,7 +84,8 @@ def _unique(df: pl.DataFrame, columns: str) -> dict:
 
 def _groupby(df: pl.DataFrame, columns: str) -> dict:
     """Build TOON output dict for group-by mode."""
-    col_list = [c.strip() for c in columns.split(",")]
+    col_list = _split_cols(columns)
+    _validate_columns(df, col_list)
     result = df.group_by(col_list).len().sort(col_list)
     return {"group": result.to_dicts()}
 
@@ -105,7 +117,7 @@ def main(
     paths = _resolve_paths(path)
 
     for i, p in enumerate(paths):
-        df = _read(p)
+        df = pl.read_parquet(p)
         stem = p.stem
 
         if schema:

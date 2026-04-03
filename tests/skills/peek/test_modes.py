@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 FIXTURE_DIR = Path(__file__).parent
 
 
@@ -65,7 +67,6 @@ def test_groupby_single_column(invoke):
 
 def test_groupby_multiple_columns(invoke):
     result = invoke("-g", "tourney_category,round")
-    assert result.exit_code == 0
     assert result.output.startswith("group[94]{tourney_category,round,len}:\n")
     assert "  Grand Slam,F,1\n" in result.output
 
@@ -157,7 +158,6 @@ def test_cols_with_types(invoke):
 
 def test_cols_with_all_rows(invoke, decode):
     result = invoke("--cols", "round", "-a")
-    assert result.exit_code == 0
     parsed = decode(result.output.strip())
     assert len(parsed["tourney_points"]) == 94
     assert "rows" not in parsed
@@ -204,21 +204,16 @@ def test_glob_no_match(runner, peek):
 # --- Mode exclusivity ---
 
 
-def test_mode_conflict_c_u(invoke):
-    result = invoke("-c", "-u", "round")
-    assert result.exit_code != 0
-
-
-def test_mode_conflict_c_g(invoke):
-    result = invoke("-c", "-g", "round")
-    assert result.exit_code != 0
-
-
-def test_mode_conflict_c_q(invoke):
-    result = invoke("-c", "-q", "SELECT * FROM t")
-    assert result.exit_code != 0
-
-
-def test_mode_conflict_u_g(invoke):
-    result = invoke("-u", "round", "-g", "round")
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("-c", "-u", "round"),
+        ("-c", "-g", "round"),
+        ("-c", "-q", "SELECT * FROM t"),
+        ("-u", "round", "-g", "round"),
+    ],
+    ids=["c+u", "c+g", "c+q", "u+g"],
+)
+def test_mode_conflict(invoke, args):
+    result = invoke(*args, expect_error=True)
     assert result.exit_code != 0

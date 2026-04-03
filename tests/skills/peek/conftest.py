@@ -1,28 +1,18 @@
 from __future__ import annotations
 
-import importlib.util
 from typing import Any
 from pathlib import Path
 
+import polars as pl
 import pytest
-from typer.testing import CliRunner
 from toon_format import decode as _decode
 
-SKILL_PATH = Path(__file__).resolve().parents[3] / "skills" / "peek" / "peek.py"
 FIXTURE_PATH = Path(__file__).parent / "tourney_points.parquet"
 
 
-def _load_peek():
-    spec = importlib.util.spec_from_file_location("peek", SKILL_PATH)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
 @pytest.fixture(scope="session")
-def peek():
-    return _load_peek()
+def peek(skill_loader):
+    return skill_loader("peek")
 
 
 @pytest.fixture(scope="session")
@@ -31,24 +21,19 @@ def fixture_path():
 
 
 @pytest.fixture(scope="session")
-def sample_df(peek, fixture_path):
-    return peek._read(fixture_path)
+def sample_df(fixture_path):
+    return pl.read_parquet(fixture_path)
 
 
 @pytest.fixture
-def runner():
-    return CliRunner()
-
-
-@pytest.fixture
-def invoke(runner, peek, fixture_path):
+def invoke(run, peek, fixture_path):
     """Invoke the peek CLI app with default fixture path appended."""
 
-    def _invoke(*args: str, use_fixture: bool = True):
+    def _invoke(*args: str, use_fixture: bool = True, **kwargs):
         cmd = list(args)
         if use_fixture:
             cmd.append(str(fixture_path))
-        return runner.invoke(peek.app, cmd)
+        return run(peek.app, cmd, **kwargs)
 
     return _invoke
 

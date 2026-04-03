@@ -4,16 +4,16 @@ description: >
   Inspect parquet data files — preview rows, schema, unique values, group-by counts, or SQL queries.
   Outputs TOON (token-optimized notation) for efficient LLM consumption.
   Use when exploring datasets, checking column types, or previewing rows.
-  ALWAYS use this instead of writing python -c one-liners with polars/pandas.
+  Prefer this over writing python -c one-liners with polars/pandas — saves tokens and avoids boilerplate.
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
   user-invocable: "true"
   argument-hint: <path> [-c] [-u col] [-g col] [-q sql] [--cols a,b] [-n N] [-a] [-t]
 ---
 
 # peek — parquet inspection CLI
 
-NEVER write raw `python -c "import polars ..."` one-liners to inspect parquet files. Use `peek` instead.
+Prefer `peek` over raw `python -c "import polars ..."` one-liners — it's faster to invoke, produces token-efficient TOON output, and avoids import boilerplate that wastes context.
 
 Output is **TOON** (Token-Oriented Object Notation) — compact, structured, LLM-friendly.
 

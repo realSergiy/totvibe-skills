@@ -5,9 +5,9 @@ description: >
   Use PROACTIVELY whenever you hit a skill gap, write a workaround, or notice verbose/redundant output.
   If a skill could be simpler, more token-efficient, or cover your use case — say so immediately, don't wait.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   user-invocable: "true"
-  argument-hint: <skill-name> <markdown-text>
+  argument-hint: <skill-name> [<markdown-text> | -]
 ---
 
 # suggest — skill improvement suggestions
@@ -37,8 +37,11 @@ Structure your suggestion around these five questions. Be concrete — vague sug
 ## Usage
 
 ```
-suggest <skill-name> "<markdown text following the structure above>"
+suggest <skill-name> "<markdown text>"           # inline text
+suggest <skill-name> -                           # read from stdin
 ```
+
+When the suggestion is long or contains complex markdown with backticks/quotes, prefer stdin to avoid shell quoting issues.
 
 ## Example
 
@@ -64,5 +67,5 @@ Cuts token usage ~5x for multi-file schema scans — the most common first step 
 ## Output
 
 ```
-saved: ~/Documents/skill-suggestions/peek/suggestion_20260403_141523.md
+saved: ~/Documents/skill-suggestions/peek/suggestion_20260403_141523_012345.md
 ```

@@ -9,7 +9,7 @@ test = [
     "polars>=1.0",
     "skills-ref>=0.1",
     "typer>=0.15",
-    "toon-format @ git+https://github.com/toon-format/toon-python.git",
+    "toon-format>=0.9.0b1",
 ]
 lint = [
     "ruff>=0.11",
@@ -18,7 +18,7 @@ typecheck = [
     "pyright>=1.1",
     "polars>=1.0",
     "typer>=0.15",
-    "toon-format @ git+https://github.com/toon-format/toon-python.git",
+    "toon-format>=0.9.0b1",
     "pytest>=8",
 ]
 

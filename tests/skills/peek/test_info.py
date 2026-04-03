@@ -5,11 +5,6 @@ from __future__ import annotations
 import pytest
 
 
-def test_exits_successfully(invoke):
-    result = invoke()
-    assert result.exit_code == 0
-
-
 def test_default_output(invoke):
     result = invoke()
     assert result.output == (
@@ -48,13 +43,9 @@ def test_preview_respects_n(invoke, decode, n):
     assert len(decode(result.output.strip())["tourney_points"]) == min(n, 94)
 
 
-def test_n_gte_total_hides_rows(invoke):
-    result = invoke("-n", "94")
-    assert "rows" not in result.output
-
-
-def test_n_greater_than_total_hides_rows(invoke):
-    result = invoke("-n", "200")
+@pytest.mark.parametrize("n", [94, 200], ids=["exact", "overshoot"])
+def test_n_gte_total_hides_rows(invoke, n):
+    result = invoke("-n", str(n))
     assert "rows" not in result.output
 
 
@@ -76,17 +67,11 @@ def test_all_rows_no_row_count(invoke, decode):
     assert "rows" not in parsed
 
 
-def test_all_rows_equivalent_to_n_zero(invoke):
-    result_a = invoke("-a")
-    result_n = invoke("-n", "0")
-    assert result_a.output == result_n.output
-
-
 def test_no_path_exits_with_error(runner, peek):
     result = runner.invoke(peek.app, [])
     assert result.exit_code != 0
 
 
 def test_nonexistent_file_exits_with_error(invoke):
-    result = invoke("--", "/nonexistent/file.parquet", use_fixture=False)
+    result = invoke("--", "/nonexistent/file.parquet", use_fixture=False, expect_error=True)
     assert result.exit_code != 0
