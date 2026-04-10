@@ -15,7 +15,15 @@ import polars as pl
 import typer
 from toon_format import encode
 
+__version__ = "0.5.0"
+
 app = typer.Typer()
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"peek {__version__}")
+        raise typer.Exit
 
 
 def _column_types(df: pl.DataFrame) -> list[str]:
@@ -90,31 +98,46 @@ def _groupby(df: pl.DataFrame, columns: str) -> dict:
     return {"group": result.to_dicts()}
 
 
-def _sql(df: pl.DataFrame, query: str) -> dict:
-    """Build TOON output dict for SQL mode."""
-    ctx = pl.SQLContext({"t": df})
+def _sql(frames: list[tuple[str, pl.DataFrame]], query: str) -> dict:
+    """Build TOON output dict for SQL mode.
+
+    Registers tables as t (first file), t1, t2, ..., tN.
+    """
+    tables: dict[str, pl.DataFrame] = {"t": frames[0][1]}
+    for i, (_stem, df) in enumerate(frames, 1):
+        tables[f"t{i}"] = df
+    ctx = pl.SQLContext(tables)
     result = ctx.execute(query).collect()
     return {"result": result.to_dicts()}
 
 
 @app.command()
 def main(
-    path: Annotated[str, typer.Argument(help="Path or glob pattern for parquet file(s)")],
+    path: Annotated[list[str], typer.Argument(help="Path(s) or glob pattern(s) for parquet file(s)")],
     n: Annotated[int, typer.Option("-n", help="Number of preview rows")] = 2,
     all_rows: Annotated[bool, typer.Option("-a", help="Show all rows")] = False,
     types: Annotated[bool, typer.Option("-t", help="Include column types")] = False,
     schema: Annotated[bool, typer.Option("-c", help="Show columns and types only")] = False,
     unique: Annotated[str | None, typer.Option("-u", help="Show unique values of column(s)")] = None,
     group: Annotated[str | None, typer.Option("-g", help="Group-by column(s) with counts")] = None,
-    query: Annotated[str | None, typer.Option("-q", help="SQL query (table aliased as t)")] = None,
+    query: Annotated[str | None, typer.Option("-q", help="SQL query (table aliased as t, t1, t2, ...)")] = None,
     cols: Annotated[str | None, typer.Option("--cols", help="Select columns for preview")] = None,
+    version: Annotated[bool | None, typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version and exit")] = None,
 ) -> None:
     """Inspect parquet files — preview, schema, unique values, group-by, or SQL."""
     modes = [schema, unique is not None, group is not None, query is not None]
     if sum(modes) > 1:
         raise typer.BadParameter("Use only one mode at a time: -c, -u, -g, or -q")
 
-    paths = _resolve_paths(path)
+    paths: list[Path] = []
+    for p in path:
+        paths.extend(_resolve_paths(p))
+
+    # SQL mode: register all files into one query context
+    if query is not None:
+        frames = [(p.stem, pl.read_parquet(p)) for p in paths]
+        print(encode(_sql(frames, query)))
+        return
 
     for i, p in enumerate(paths):
         df = pl.read_parquet(p)
@@ -126,8 +149,6 @@ def main(
             output = _unique(df, unique)
         elif group is not None:
             output = _groupby(df, group)
-        elif query is not None:
-            output = _sql(df, query)
         else:
             output = _preview(df, stem, n, all_rows, types, cols)
 

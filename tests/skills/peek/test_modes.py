@@ -119,6 +119,51 @@ def test_sql_limit(invoke):
     )
 
 
+# --- Multi-file SQL mode ---
+
+
+def test_sql_multi_file_t1_t2(runner, peek):
+    """Multiple files are registered as t1, t2 for cross-file queries."""
+    players = str(FIXTURE_DIR / "players.parquet")
+    points = str(FIXTURE_DIR / "tourney_points.parquet")
+    result = runner.invoke(
+        peek.app,
+        ["-q", "SELECT t1.player, t1.wins FROM t1 ORDER BY t1.wins DESC", players, points],
+    )
+    assert result.exit_code == 0
+    assert result.output == (
+        "result[3]{player,wins}:\n"
+        "  Federer,103\n"
+        "  Djokovic,98\n"
+        "  Nadal,92\n"
+    )
+
+
+def test_sql_multi_file_cross_join(runner, peek):
+    """Cross-file query joining t1 and t2."""
+    players = str(FIXTURE_DIR / "players.parquet")
+    points = str(FIXTURE_DIR / "tourney_points.parquet")
+    result = runner.invoke(
+        peek.app,
+        [
+            "-q",
+            "SELECT COUNT(*) as cnt FROM t1 CROSS JOIN t2",
+            players,
+            points,
+        ],
+    )
+    assert result.exit_code == 0
+    assert "cnt" in result.output
+    assert "282" in result.output  # 3 players × 94 point rows
+
+
+def test_sql_single_file_t1_alias(invoke):
+    """Single file is accessible as both t and t1."""
+    result = invoke("-q", "SELECT COUNT(*) as cnt FROM t1")
+    assert result.exit_code == 0
+    assert "94" in result.output
+
+
 # --- Column selection (--cols) ---
 
 

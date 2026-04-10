@@ -6,7 +6,7 @@ description: >
   Use when exploring datasets, checking column types, or previewing rows.
   Prefer this over writing python -c one-liners with polars/pandas — saves tokens and avoids boilerplate.
 metadata:
-  version: "0.4.1"
+  version: "0.5.0"
   user-invocable: "true"
   argument-hint: <path> [-c] [-u col] [-g col] [-q sql] [--cols a,b] [-n N] [-a] [-t]
 ---
@@ -29,7 +29,7 @@ Modes are mutually exclusive — use only one at a time.
 | Schema | `-c` | Columns, types, and row count — no data |
 | Unique | `-u col` | Distinct values of column(s) |
 | Group-by | `-g col` | Group-by counts |
-| SQL | `-q "..."` | Arbitrary SQL (table aliased as `t`) |
+| SQL | `-q "..."` | Arbitrary SQL (tables aliased as `t`, `t1`, `t2`, ...) |
 
 ## Usage
 
@@ -53,9 +53,14 @@ peek <path> -u round,surface         # multiple columns
 peek <path> -g round                 # one column
 peek <path> -g tourney_level,round   # multiple columns
 
-# SQL (table aliased as t)
+# SQL — single file (table aliased as t)
 peek <path> -q "SELECT round, COUNT(*) as cnt FROM t GROUP BY round ORDER BY cnt DESC"
 peek <path> -q "SELECT * FROM t WHERE points > 500 LIMIT 5"
+
+# SQL — multi-file (tables aliased as t1, t2, ...; t = t1)
+peek a.parquet b.parquet -q "SELECT * FROM t1 WHERE id NOT IN (SELECT id FROM t2)"
+peek a.parquet b.parquet -q "SELECT COUNT(*) as matched FROM t1 JOIN t2 USING(player_code)"
+peek a.parquet b.parquet -q "SELECT t1.name, t2.score FROM t1 JOIN t2 USING(id) LIMIT 20"
 
 # Glob — multiple files
 peek data/prep/*.parquet -c          # schema of each file
@@ -73,7 +78,7 @@ peek data/prep/*.parquet -u round    # unique values from each file
 | `-c` | Schema mode: columns + types only | off |
 | `-u col` | Unique values of column(s) | off |
 | `-g col` | Group-by column(s) with counts | off |
-| `-q "..."` | SQL query (table aliased as `t`) | off |
+| `-q "..."` | SQL query (tables: `t`/`t1`, `t2`, ...) | off |
 
 ## Output examples
 
@@ -127,4 +132,5 @@ result[3]{name,total}:
 - **What values does a column have?** `peek <path> -u col`
 - **How is data distributed?** `peek <path> -g col1,col2`
 - **Complex filtering or aggregation?** `peek <path> -q "SELECT ..."`
+- **Cross-file analysis?** `peek a.parquet b.parquet -q "SELECT ... FROM t1 JOIN t2 ..."`
 - **Comparing multiple files?** `peek data/*.parquet -c`

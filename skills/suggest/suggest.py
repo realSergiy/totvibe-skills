@@ -15,7 +15,15 @@ from typing import Annotated
 import typer
 from toon_format import encode
 
+__version__ = "0.2.1"
+
 app = typer.Typer()
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"suggest {__version__}")
+        raise typer.Exit
 
 SUGGEST_DIR = Path.home() / "Documents" / "skill-suggestions"
 
@@ -39,6 +47,7 @@ def main(
             help="Markdown: Context, Gap, Responsibility, Suggestion, Impact. Use '-' to read from stdin."
         ),
     ] = None,
+    version: Annotated[bool | None, typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version and exit")] = None,
 ) -> None:
     """Submit a structured improvement suggestion for a skill — what fell short and what should change."""
     if text is None or text == "-":
