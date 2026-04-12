@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.14"
-# dependencies = ["polars>=1.0", "typer>=0.15", "toon-format>=0.9.0b1"]
+# dependencies = ["duckdb>=1.0", "typer>=0.15", "toon-format>=0.9.0b1"]
 # ///
 """Quick parquet inspection CLI."""
 
@@ -11,11 +11,11 @@ import glob as globmod
 from pathlib import Path
 from typing import Annotated
 
-import polars as pl
+import duckdb
 import typer
 from toon_format import encode
 
-__version__ = "0.5.0"
+__version__ = "0.7.0"
 
 app = typer.Typer()
 
@@ -26,25 +26,11 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit
 
 
-def _column_types(df: pl.DataFrame) -> list[str]:
-    return [str(dtype) for dtype in df.schema.dtypes()]
-
-
 def _split_cols(s: str) -> list[str]:
     return [c.strip() for c in s.split(",")]
 
 
-def _validate_columns(df: pl.DataFrame, columns: list[str]) -> None:
-    available = set(df.schema.names())
-    bad = [c for c in columns if c not in available]
-    if bad:
-        raise typer.BadParameter(
-            f"Column(s) not found: {', '.join(bad)}. Available: {', '.join(df.schema.names())}"
-        )
-
-
 def _resolve_paths(pattern: str) -> list[Path]:
-    """Resolve a path or glob pattern to a list of parquet files."""
     matches = sorted(globmod.glob(pattern))
     if not matches:
         raise typer.BadParameter(f"No files match: {pattern}")
@@ -55,60 +41,154 @@ def _resolve_paths(pattern: str) -> list[Path]:
     return paths
 
 
-def _preview(df: pl.DataFrame, stem: str, n: int, all_rows: bool, types: bool, cols: str | None) -> dict:
-    """Build TOON output dict for preview mode."""
+def _escape_path(path: Path) -> str:
+    return str(path).replace("'", "''")
+
+
+def _connect(path: Path) -> duckdb.DuckDBPyConnection:
+    con = duckdb.connect()
+    con.execute(f"CREATE VIEW t AS SELECT * FROM read_parquet('{_escape_path(path)}')")
+    return con
+
+
+def _to_dicts(con: duckdb.DuckDBPyConnection) -> list[dict]:
+    columns = [desc[0] for desc in con.description]
+    return [dict(zip(columns, row)) for row in con.fetchall()]
+
+
+def _describe(con: duckdb.DuckDBPyConnection) -> list[tuple[str, str]]:
+    rows = con.execute("DESCRIBE t").fetchall()
+    return [(row[0], row[1]) for row in rows]
+
+
+def _validate_columns(available: list[str], columns: list[str]) -> None:
+    bad = [c for c in columns if c not in available]
+    if bad:
+        raise typer.BadParameter(
+            f"Column(s) not found: {', '.join(bad)}. Available: {', '.join(available)}"
+        )
+
+
+def _count(con: duckdb.DuckDBPyConnection) -> int:
+    row = con.execute("SELECT COUNT(*) FROM t").fetchone()
+    assert row is not None
+    return row[0]
+
+
+def _preview(con: duckdb.DuckDBPyConnection, stem: str, n: int, all_rows: bool, types: bool, cols: str | None) -> dict:
+    desc = _describe(con)
+    col_names = [name for name, _ in desc]
     if cols:
         col_list = _split_cols(cols)
-        _validate_columns(df, col_list)
-        df = df.select(col_list)
-    total = df.shape[0]
-    output: dict = {}
-    preview = df if all_rows else df.head(n)
-    output[stem] = preview.to_dicts()
+        _validate_columns(col_names, col_list)
+        col_expr = ", ".join(f'"{c}"' for c in col_list)
+        desc_map = dict(desc)
+        desc = [(name, desc_map[name]) for name in col_list]
+    else:
+        col_expr = "*"
+    total = _count(con)
+    limit = "" if all_rows else f" LIMIT {n}"
+    con.execute(f"SELECT {col_expr} FROM t{limit}")
+    output: dict = {stem: _to_dicts(con)}
     if types:
-        output["types"] = _column_types(df)
+        output["types"] = [dtype for _, dtype in desc]
     if not all_rows and n < total:
         output["rows"] = total
     return output
 
 
-def _schema(df: pl.DataFrame, stem: str) -> dict:
-    """Build TOON output dict for schema/columns mode."""
-    cols = list(df.schema.names())
-    types = _column_types(df)
-    return {stem: dict(zip(cols, types)), "rows": df.shape[0]}
+def _schema(con: duckdb.DuckDBPyConnection, stem: str) -> dict:
+    desc = _describe(con)
+    total = _count(con)
+    return {stem: dict(desc), "rows": total}
 
 
-def _unique(df: pl.DataFrame, columns: str) -> dict:
-    """Build TOON output dict for unique-values mode."""
+def _fmt_num(s: str) -> str:
+    val = float(s)
+    rounded = round(val, 1)
+    if rounded == int(rounded):
+        return str(int(rounded))
+    return str(rounded)
+
+
+def _describe_stats(con: duckdb.DuckDBPyConnection, stem: str) -> str:
+    rows = con.execute("SUMMARIZE t").fetchall()
+    total = rows[0][10] if rows else 0
+    lines = [f"{stem}{{{len(rows)} cols, {total} rows}}:"]
+    for row in rows:
+        name, dtype = row[0], row[1]
+        null_val = float(row[11])
+        null_str = f"{int(null_val)}%" if null_val == int(null_val) else f"{null_val:.1f}%"
+        if row[5] is not None:
+            parts = [
+                f"min={_fmt_num(row[2])}",
+                f"max={_fmt_num(row[3])}",
+                f"avg={_fmt_num(row[5])}",
+                f"q25={_fmt_num(row[7])}",
+                f"q50={_fmt_num(row[8])}",
+                f"q75={_fmt_num(row[9])}",
+                f"null={null_str}",
+            ]
+        else:
+            parts = [f"unique={row[4]}", f"null={null_str}"]
+        lines.append(f"  {name}({dtype}): {' '.join(parts)}")
+    return "\n".join(lines)
+
+
+def _unique(con: duckdb.DuckDBPyConnection, columns: str) -> dict:
     col_list = _split_cols(columns)
-    _validate_columns(df, col_list)
+    desc = _describe(con)
+    _validate_columns([name for name, _ in desc], col_list)
     output: dict = {}
     for col_name in col_list:
-        values = df[col_name].drop_nulls().unique().sort().to_list()
-        output[col_name] = values
+        rows = con.execute(
+            f'SELECT DISTINCT "{col_name}" FROM t '
+            f'WHERE "{col_name}" IS NOT NULL '
+            f'ORDER BY "{col_name}"'
+        ).fetchall()
+        output[col_name] = [r[0] for r in rows]
     return output
 
 
-def _groupby(df: pl.DataFrame, columns: str) -> dict:
-    """Build TOON output dict for group-by mode."""
+def _groupby(con: duckdb.DuckDBPyConnection, columns: str) -> dict:
     col_list = _split_cols(columns)
-    _validate_columns(df, col_list)
-    result = df.group_by(col_list).len().sort(col_list)
-    return {"group": result.to_dicts()}
+    desc = _describe(con)
+    _validate_columns([name for name, _ in desc], col_list)
+    col_expr = ", ".join(f'"{c}"' for c in col_list)
+    con.execute(
+        f"SELECT {col_expr}, COUNT(*) as len "
+        f"FROM t GROUP BY {col_expr} ORDER BY {col_expr}"
+    )
+    return {"group": _to_dicts(con)}
 
 
-def _sql(frames: list[tuple[str, pl.DataFrame]], query: str) -> dict:
-    """Build TOON output dict for SQL mode.
+def _register_tables(con: duckdb.DuckDBPyConnection, paths: list[Path]) -> list[str]:
+    names = ["t"]
+    con.execute(f"CREATE VIEW t AS SELECT * FROM read_parquet('{_escape_path(paths[0])}')")
+    for i, p in enumerate(paths, 1):
+        name = f"t{i}"
+        con.execute(f"CREATE VIEW {name} AS SELECT * FROM read_parquet('{_escape_path(p)}')")
+        names.append(name)
+    return names
 
-    Registers tables as t (first file), t1, t2, ..., tN.
-    """
-    tables: dict[str, pl.DataFrame] = {"t": frames[0][1]}
-    for i, (_stem, df) in enumerate(frames, 1):
-        tables[f"t{i}"] = df
-    ctx = pl.SQLContext(tables)
-    result = ctx.execute(query).collect()
-    return {"result": result.to_dicts()}
+
+def _sql_error_hint(msg: str, table_names: list[str]) -> str:
+    lower = msg.lower()
+    if "table" in lower and ("does not exist" in lower or "not found" in lower):
+        return f"{msg}\nAvailable tables: {', '.join(table_names)}"
+    if "column" in lower and "not found" in lower:
+        return f"{msg}\nHint: use peek <path> -c to list columns"
+    return msg
+
+
+def _sql(con: duckdb.DuckDBPyConnection, query: str, table_names: list[str]) -> dict:
+    try:
+        con.execute(query)
+        return {"result": _to_dicts(con)}
+    except duckdb.Error as e:
+        msg = _sql_error_hint(str(e), table_names)
+        typer.echo(msg, err=True)
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -118,40 +198,43 @@ def main(
     all_rows: Annotated[bool, typer.Option("-a", help="Show all rows")] = False,
     types: Annotated[bool, typer.Option("-t", help="Include column types")] = False,
     schema: Annotated[bool, typer.Option("-c", help="Show columns and types only")] = False,
+    describe: Annotated[bool, typer.Option("-d", help="Describe columns with stats")] = False,
     unique: Annotated[str | None, typer.Option("-u", help="Show unique values of column(s)")] = None,
     group: Annotated[str | None, typer.Option("-g", help="Group-by column(s) with counts")] = None,
-    query: Annotated[str | None, typer.Option("-q", help="SQL query (table aliased as t, t1, t2, ...)")] = None,
+    query: Annotated[str | None, typer.Option("-q", help="SQL query (tables: t, t1, t2, ...)")] = None,
     cols: Annotated[str | None, typer.Option("--cols", help="Select columns for preview")] = None,
     version: Annotated[bool | None, typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version and exit")] = None,
 ) -> None:
     """Inspect parquet files — preview, schema, unique values, group-by, or SQL."""
-    modes = [schema, unique is not None, group is not None, query is not None]
+    modes = [describe, schema, unique is not None, group is not None, query is not None]
     if sum(modes) > 1:
-        raise typer.BadParameter("Use only one mode at a time: -c, -u, -g, or -q")
+        raise typer.BadParameter("Use only one mode at a time: -c, -d, -u, -g, or -q")
 
     paths: list[Path] = []
     for p in path:
         paths.extend(_resolve_paths(p))
 
     if query is not None:
-        frames = [(p.stem, pl.read_parquet(p)) for p in paths]
-        print(encode(_sql(frames, query)))
+        con = duckdb.connect()
+        table_names = _register_tables(con, paths)
+        print(encode(_sql(con, query, table_names)))
         return
 
     for i, p in enumerate(paths):
-        df = pl.read_parquet(p)
+        con = _connect(p)
         stem = p.stem
 
-        if schema:
-            output = _schema(df, stem)
+        if describe:
+            print(_describe_stats(con, stem))
+        elif schema:
+            print(encode(_schema(con, stem)))
         elif unique is not None:
-            output = _unique(df, unique)
+            print(encode(_unique(con, unique)))
         elif group is not None:
-            output = _groupby(df, group)
+            print(encode(_groupby(con, group)))
         else:
-            output = _preview(df, stem, n, all_rows, types, cols)
+            print(encode(_preview(con, stem, n, all_rows, types, cols)))
 
-        print(encode(output))
         if i < len(paths) - 1:
             print()
 

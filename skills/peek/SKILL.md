@@ -6,9 +6,9 @@ description: >
   Use when exploring datasets, checking column types, or previewing rows.
   Prefer this over writing python -c one-liners with polars/pandas — saves tokens and avoids boilerplate.
 metadata:
-  version: "0.5.0"
+  version: "0.7.0"
   user-invocable: "true"
-  argument-hint: <path> [-c] [-u col] [-g col] [-q sql] [--cols a,b] [-n N] [-a] [-t]
+  argument-hint: <path> [-c] [-d] [-u col] [-g col] [-q sql] [--cols a,b] [-n N] [-a] [-t]
 ---
 
 # peek — parquet inspection CLI
@@ -27,9 +27,10 @@ Modes are mutually exclusive — use only one at a time.
 |------|------|---------|
 | Preview | *(default)* | Show first N rows |
 | Schema | `-c` | Columns, types, and row count — no data |
+| Describe | `-d` | Per-column stats — unique/min/max/avg/quartiles |
 | Unique | `-u col` | Distinct values of column(s) |
 | Group-by | `-g col` | Group-by counts |
-| SQL | `-q "..."` | Arbitrary SQL (tables aliased as `t`, `t1`, `t2`, ...) |
+| SQL | `-q "..."` | DuckDB SQL — full dialect including regex, CTEs, window functions (tables: `t`, `t1`, `t2`, ...) |
 
 ## Usage
 
@@ -44,6 +45,9 @@ peek <path> --cols round,points -n 5 -t  # combine options
 
 # Schema — columns + types, no data
 peek <path> -c
+
+# Describe — per-column stats
+peek <path> -d
 
 # Unique values
 peek <path> -u round                 # one column
@@ -76,6 +80,7 @@ peek data/prep/*.parquet -u round    # unique values from each file
 | `-t` | Append column types | off |
 | `--cols a,b` | Select columns for preview | all |
 | `-c` | Schema mode: columns + types only | off |
+| `-d` | Describe mode: per-column stats | off |
 | `-u col` | Unique values of column(s) | off |
 | `-g col` | Group-by column(s) with counts | off |
 | `-q "..."` | SQL query (tables: `t`/`t1`, `t2`, ...) | off |
@@ -95,10 +100,19 @@ Schema (`peek data/sales.parquet -c`):
 
 ```text
 sales:
-  id: Int64
-  name: String
-  amount: Float64
+  id: BIGINT
+  name: VARCHAR
+  amount: DOUBLE
 rows: 1000
+```
+
+Describe (`peek data/sales.parquet -d`):
+
+```text
+sales{3 cols, 1000 rows}:
+  id(BIGINT): min=1 max=1000 avg=500 q25=250 q50=500 q75=750 null=0%
+  name(VARCHAR): unique=42 null=0%
+  amount(DOUBLE): min=0.5 max=9999.0 avg=450.2 q25=120 q50=380 q75=720 null=0%
 ```
 
 Unique (`peek data/sales.parquet -u name`):
@@ -128,6 +142,7 @@ result[3]{name,total}:
 ## When to use which mode
 
 - **Don't know what's in the file?** Start with `peek <path> -c` for schema
+- **Data quality & distribution?** `peek <path> -d` for per-column stats
 - **Need to see sample data?** `peek <path>` or `peek <path> -n 10`
 - **What values does a column have?** `peek <path> -u col`
 - **How is data distributed?** `peek <path> -g col1,col2`

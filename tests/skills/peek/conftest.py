@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 
-import polars as pl
 import pytest
 from toon_format import decode as _decode
 
@@ -18,11 +17,6 @@ def peek(skill_loader):
 @pytest.fixture(scope="session")
 def fixture_path():
     return FIXTURE_PATH
-
-
-@pytest.fixture(scope="session")
-def sample_df(fixture_path):
-    return pl.read_parquet(fixture_path)
 
 
 @pytest.fixture

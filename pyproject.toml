@@ -6,7 +6,7 @@ version = "0.1.0"
 [dependency-groups]
 test = [
     "pytest>=8",
-    "polars>=1.0",
+    "duckdb>=1.0",
     "skills-ref>=0.1",
     "typer>=0.15",
     "toon-format>=0.9.0b1",
@@ -16,7 +16,7 @@ lint = [
 ]
 typecheck = [
     "pyright>=1.1",
-    "polars>=1.0",
+    "duckdb>=1.0",
     "typer>=0.15",
     "toon-format>=0.9.0b1",
     "pytest>=8",
