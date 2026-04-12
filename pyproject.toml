@@ -10,6 +10,11 @@ test = [
     "skills-ref>=0.1",
     "typer>=0.15",
     "toon-format>=0.9.0b1",
+    "httpx>=0.28",
+    "beautifulsoup4>=4.13",
+    "lxml>=5.0",
+    "readability-lxml>=0.8",
+    "markdownify>=0.14",
 ]
 lint = [
     "ruff>=0.11",
@@ -20,6 +25,11 @@ typecheck = [
     "typer>=0.15",
     "toon-format>=0.9.0b1",
     "pytest>=8",
+    "httpx>=0.28",
+    "beautifulsoup4>=4.13",
+    "lxml>=5.0",
+    "readability-lxml>=0.8",
+    "markdownify>=0.14",
 ]
 
 [tool.pytest.ini_options]

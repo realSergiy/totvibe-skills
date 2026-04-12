@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Installing the CLI</title>
+    <meta property="og:title" content="Installing the CLI">
+</head>
+<body>
+<article>
+    <h1>Installing the CLI</h1>
+    <p>Choose your preferred installation method:</p>
+    <div role="tablist" aria-label="Installation methods">
+        <button role="tab" aria-selected="true" aria-controls="panel-curl">curl</button>
+        <button role="tab" aria-selected="false" aria-controls="panel-npm">npm</button>
+        <button role="tab" aria-selected="false" aria-controls="panel-brew">brew</button>
+    </div>
+    <div id="panel-curl" role="tabpanel">
+        <pre><code class="language-bash">curl -fsSL https://example.com/install.sh | bash</code></pre>
+    </div>
+    <div id="panel-npm" role="tabpanel">
+        <pre><code class="language-bash">npm install -g @example/cli</code></pre>
+    </div>
+    <div id="panel-brew" role="tabpanel">
+        <pre><code class="language-bash">brew install example/tap/cli</code></pre>
+    </div>
+    <h2>Verify Installation</h2>
+    <p>After installing, verify it works:</p>
+    <pre><code class="language-bash">example --version</code></pre>
+</article>
+</body>
+</html>

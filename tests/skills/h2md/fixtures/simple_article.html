@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Getting Started with FastAPI</title>
+    <meta property="og:title" content="Getting Started with FastAPI">
+    <meta property="og:description" content="A quick introduction to building APIs with FastAPI">
+    <meta property="og:url" content="https://example.com/blog/fastapi-intro">
+    <meta property="og:image" content="https://example.com/img/fastapi.png">
+    <meta property="og:site_name" content="Example Blog">
+    <meta property="article:author" content="Jane Smith">
+    <meta property="article:published_time" content="2026-03-15T10:00:00Z">
+    <meta name="description" content="Learn how to build fast APIs with Python">
+    <script type="application/ld+json">
+    {
+        "@type": "Article",
+        "headline": "Getting Started with FastAPI",
+        "author": {"@type": "Person", "name": "Jane Smith"},
+        "datePublished": "2026-03-15T10:00:00Z",
+        "description": "A quick introduction to building APIs with FastAPI"
+    }
+    </script>
+</head>
+<body>
+    <nav><a href="/">Home</a> | <a href="/blog">Blog</a></nav>
+    <article>
+        <h1>Getting Started with FastAPI</h1>
+        <p>FastAPI is a modern web framework for building APIs with Python.</p>
+        <h2>Installation</h2>
+        <p>Install FastAPI using pip:</p>
+        <pre><code class="language-bash">pip install fastapi uvicorn</code></pre>
+        <h2>First Endpoint</h2>
+        <p>Create a simple endpoint:</p>
+        <pre><code class="language-python">from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"message": "Hello, World!"}</code></pre>
+        <h2>Running the Server</h2>
+        <p>Start the development server:</p>
+        <pre><code class="language-bash">uvicorn main:app --reload</code></pre>
+        <p>Open <a href="http://localhost:8000">http://localhost:8000</a> in your browser.</p>
+        <img src="https://example.com/img/fastapi-screenshot.png" alt="FastAPI docs screenshot">
+        <h2>Conclusion</h2>
+        <p>FastAPI makes it easy to build production-ready APIs quickly.</p>
+    </article>
+    <footer><p>Copyright 2026 Example Blog</p></footer>
+</body>
+</html>
