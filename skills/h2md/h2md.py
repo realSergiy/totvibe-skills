@@ -36,7 +36,7 @@ from markdownify import MarkdownConverter
 from readability import Document
 from toon_format import encode
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 app = typer.Typer()
 

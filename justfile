@@ -39,10 +39,10 @@ install name="":
             suggest_dir="$(pwd)/plan/skill-suggestions"
             mkdir -p "$HOME/.config/environment.d"
             printf 'SUGGEST_DIR=%s\n' "$suggest_dir" > "$HOME/.config/environment.d/suggest.conf"
-            if ! grep -q '^export SUGGEST_DIR=' "$HOME/.profile" 2>/dev/null; then
-                printf '\nexport SUGGEST_DIR=%s\n' "$suggest_dir" >> "$HOME/.profile"
+            if ! grep -q '^export SUGGEST_DIR=' "$HOME/.bashrc" 2>/dev/null; then
+                printf '\nexport SUGGEST_DIR=%s\n' "$suggest_dir" >> "$HOME/.bashrc"
             else
-                sed -i "s|^export SUGGEST_DIR=.*|export SUGGEST_DIR=$suggest_dir|" "$HOME/.profile"
+                sed -i "s|^export SUGGEST_DIR=.*|export SUGGEST_DIR=$suggest_dir|" "$HOME/.bashrc"
             fi
             echo "SUGGEST_DIR set to $suggest_dir"
         fi
