@@ -131,6 +131,21 @@ def _fetch(workspace: Path, manifest: Manifest, url: str, force: bool) -> bool:
 # Stage 2: Extract (structural preprocessing + article extraction)
 # ---------------------------------------------------------------------------
 
+def _collapse_code_spans(soup: BeautifulSoup) -> None:
+    for pre in soup.find_all("pre"):
+        code = pre.find("code")
+        if not code or not isinstance(code, Tag):
+            continue
+        if not code.find("span"):
+            continue
+        text = code.get_text()
+        lang_classes = [c for c in _classes_from_tag(code) if c.startswith(("language-", "lang-", "highlight-"))]
+        code.clear()
+        code.string = text
+        if lang_classes:
+            code["class"] = " ".join(lang_classes)
+
+
 def _insert_span_whitespace(tag: Tag) -> None:
     for child in list(tag.descendants):
         if not isinstance(child, Tag) or child.name not in INLINE_TAGS:
@@ -192,6 +207,52 @@ def _flatten_tablists(soup: BeautifulSoup) -> None:
                 panel.decompose()
 
 
+_TAB_CONTAINER_CLS = {"codetabs", "tabs", "code-tabs", "tabbed-content", "code-group"}
+_TAB_BUTTON_CLS = {"codeblocktab", "tabs__item", "tab-button", "tab", "code-group-tab"}
+_TAB_PANEL_CLS = {"codeblockcontent", "tabitem", "tab-panel", "tab-content", "tab-pane", "code-group-panel"}
+
+
+def _has_any_class(tag: Tag, class_set: set[str]) -> bool:
+    return any(c.lower() in class_set for c in _classes_from_tag(tag))
+
+
+def _flatten_class_tabs(soup: BeautifulSoup) -> None:
+    for container in soup.find_all(lambda t: isinstance(t, Tag) and _has_any_class(t, _TAB_CONTAINER_CLS)):
+        if container.find(attrs={"role": "tablist"}):
+            continue
+
+        buttons = container.find_all(lambda t: isinstance(t, Tag) and _has_any_class(t, _TAB_BUTTON_CLS))
+        if not buttons:
+            all_children = [c for c in container.children if isinstance(c, Tag)]
+            nav = next((c for c in all_children if c.name in ("nav", "ul", "div") and not c.find("pre")), None)
+            if nav:
+                buttons = [c for c in nav.descendants if isinstance(c, Tag) and c.string and c.string.strip()]
+
+        labels = [b.get_text(strip=True) for b in buttons]
+        if not labels:
+            continue
+
+        panels = container.find_all(lambda t: isinstance(t, Tag) and _has_any_class(t, _TAB_PANEL_CLS))
+        if not panels:
+            panels = [c for c in container.children if isinstance(c, Tag) and c.find("pre")]
+
+        if not panels:
+            continue
+
+        replacement = soup.new_tag("div", attrs={"class": "h2md-flattened-tabs"})
+        for label, panel in zip(labels, panels):
+            heading = soup.new_tag("h4")
+            heading.string = label
+            replacement.append(heading)
+            for child in list(panel.children):
+                if isinstance(child, Tag):
+                    replacement.append(child.extract())
+                elif isinstance(child, NavigableString) and child.strip():
+                    replacement.append(child.extract())
+
+        container.replace_with(replacement)
+
+
 def _reconstruct_terminal_regions(soup: BeautifulSoup) -> None:
     terminal_keywords = {"terminal", "output", "console", "command", "shell"}
     for region in soup.find_all(attrs={"role": "region"}):
@@ -212,8 +273,31 @@ def _reconstruct_terminal_regions(soup: BeautifulSoup) -> None:
             region.replace_with(pre)
 
 
+def _clean_code_containers(soup: BeautifulSoup) -> None:
+    for pre in soup.find_all("pre"):
+        parent = pre.parent
+        if not parent or not isinstance(parent, Tag):
+            continue
+        if parent.name in ("body", "article", "main", "section"):
+            continue
+        children = [c for c in parent.children if isinstance(c, Tag)]
+        if len(children) < 2:
+            continue
+        for sibling in list(parent.children):
+            if sibling is pre or not isinstance(sibling, Tag):
+                continue
+            if sibling.name in ("code", "pre"):
+                continue
+            if sibling.find("pre"):
+                continue
+            sib_text = sibling.get_text(strip=True)
+            if not sib_text:
+                sibling.decompose()
+
+
 def _preprocess_dom(soup: BeautifulSoup) -> BeautifulSoup:
     _flatten_tablists(soup)
+    _flatten_class_tabs(soup)
     _reconstruct_terminal_regions(soup)
 
     for tag_name in STRIP_TAGS:
@@ -224,6 +308,8 @@ def _preprocess_dom(soup: BeautifulSoup) -> BeautifulSoup:
         if isinstance(tag, Tag):
             tag.decompose()
 
+    _clean_code_containers(soup)
+    _collapse_code_spans(soup)
     _insert_span_whitespace(soup)
     return soup
 
@@ -443,6 +529,8 @@ LANG_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^(curl|bun|npm|npx|docker|brew|apt|pip|yarn|pnpm|deno)\b", re.MULTILINE), "bash"),
     (re.compile(r"^\s*[\[{]"), "json"),
     (re.compile(r"<[A-Z][a-zA-Z]*[\s/>]"), "tsx"),
+    (re.compile(r"^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b", re.MULTILINE | re.IGNORECASE), "sql"),
+    (re.compile(r":\s*(string|number|boolean|void|any)\b|^interface\s|^type\s+\w+\s*=", re.MULTILINE), "typescript"),
     (re.compile(r"^(def |class |import |from \w+ import )", re.MULTILINE), "python"),
     (re.compile(r"(function\s|const\s|let\s|=>|module\.exports)"), "javascript"),
     (re.compile(r"^(html|body|div|span|\.|#|@media)\s*\{", re.MULTILINE), "css"),
@@ -468,6 +556,57 @@ def _classes_from_tag(tag: Tag) -> list[str]:
     return [str(c) for c in raw]
 
 
+_KNOWN_LANGS = {
+    "javascript", "typescript", "python", "bash", "sh", "shell", "zsh",
+    "json", "toml", "yaml", "yml", "html", "css", "scss", "sql",
+    "rust", "go", "java", "kotlin", "swift", "ruby", "php", "c", "cpp",
+    "tsx", "jsx", "xml", "graphql", "diff", "markdown", "text",
+    "powershell", "dockerfile", "makefile", "lua", "perl", "r", "zig",
+}
+
+_EXT_TO_LANG = {
+    ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+    ".ts": "typescript", ".mts": "typescript", ".tsx": "tsx", ".jsx": "jsx",
+    ".py": "python", ".rb": "ruby", ".rs": "rust", ".go": "go",
+    ".java": "java", ".kt": "kotlin", ".swift": "swift", ".php": "php",
+    ".sh": "bash", ".bash": "bash", ".zsh": "bash",
+    ".sql": "sql", ".css": "css", ".scss": "scss", ".html": "html",
+    ".json": "json", ".toml": "toml", ".yaml": "yaml", ".yml": "yaml",
+    ".xml": "xml", ".md": "markdown", ".c": "c", ".cpp": "cpp", ".h": "c",
+}
+
+
+def _lang_from_data_attrs(el: Tag) -> str | None:
+    for tag in [el] + ([el.parent] if el.parent and isinstance(el.parent, Tag) else []):
+        for attr in ("data-language", "data-lang"):
+            val = str(tag.get(attr, "")).strip().lower()
+            if val and val in _KNOWN_LANGS:
+                return val
+    return None
+
+
+def _lang_from_siblings(el: Tag) -> str | None:
+    parent = el.parent
+    if not parent or not isinstance(parent, Tag):
+        return None
+    for _ in range(2):
+        for sibling in parent.children:
+            if sibling is el or not isinstance(sibling, Tag):
+                continue
+            text = sibling.get_text(strip=True).lower()
+            if text in _KNOWN_LANGS:
+                return text
+            for ext, lang in _EXT_TO_LANG.items():
+                if text.endswith(ext):
+                    return lang
+        if parent.parent and isinstance(parent.parent, Tag):
+            el = parent
+            parent = parent.parent
+        else:
+            break
+    return None
+
+
 def _code_language_callback(el: Tag) -> str:
     candidates = [el]
     code_child = el.find("code")
@@ -480,6 +619,15 @@ def _code_language_callback(el: Tag) -> str:
                     lang = cls[len(prefix):]
                     if lang and lang != "text":
                         return lang
+
+    from_data = _lang_from_data_attrs(el)
+    if from_data:
+        return from_data
+
+    from_sibling = _lang_from_siblings(el)
+    if from_sibling:
+        return from_sibling
+
     code = el.get_text()
     return _sniff_language(code)
 
@@ -603,6 +751,27 @@ _FUSED_RE = re.compile(r"\S{50,}")
 _HTML_LEAK_RE = re.compile(r"<(svg|button|input|form)\b|role=[\"']")
 _EMPTY_BLOCK_RE = re.compile(r"```[a-z]*\n\s*\n?```")
 _TAB_LABEL_RE = re.compile(r"^[a-z]{2,15}$", re.IGNORECASE)
+_FENCE_RE = re.compile(r"^```[^\n]*\n.*?^```", re.MULTILINE | re.DOTALL)
+_MD_LINK_URL_RE = re.compile(r"\]\([^\)]+\)")
+_INLINE_CODE_RE = re.compile(r"`[^`]+`")
+
+
+def _exclusion_zones(md: str) -> list[tuple[int, int]]:
+    zones: list[tuple[int, int]] = []
+    for pattern in (_FENCE_RE, _MD_LINK_URL_RE, _INLINE_CODE_RE):
+        for m in pattern.finditer(md):
+            zones.append((m.start(), m.end()))
+    zones.sort()
+    return zones
+
+
+def _in_exclusion_zone(start: int, end: int, zones: list[tuple[int, int]]) -> bool:
+    for zs, ze in zones:
+        if zs > end:
+            break
+        if start < ze and end > zs:
+            return True
+    return False
 
 
 def _context_around(text: str, start: int, end: int, ctx: int = 40) -> str:
@@ -621,8 +790,11 @@ def _detect(workspace: Path, manifest: Manifest, force: bool) -> bool:
         return True
     md = article.read_text()
     issues: list[str] = []
+    zones = _exclusion_zones(md)
 
     for m in _FUSED_RE.finditer(md):
+        if _in_exclusion_zone(m.start(), m.end(), zones):
+            continue
         ctx = _context_around(md, m.start(), m.end())
         issues.append(f"## Likely fused text\n**Find:** `{ctx}`\n**Source check:** article.html\n**Suggested fix:** verify whitespace between tokens\n")
 
