@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -64,3 +65,30 @@ def test_markdown_content_preserved(invoke, suggest_dir):
     invoke("peek", md)
     files = list((suggest_dir / "peek").glob("suggestion_*.md"))
     assert files[0].read_text() == md + "\n"
+
+
+def test_suggest_dir_from_env(tmp_path, monkeypatch):
+    """SUGGEST_DIR env var overrides the default directory."""
+    custom = tmp_path / "custom-suggestions"
+    monkeypatch.setenv("SUGGEST_DIR", str(custom))
+    spec = importlib.util.spec_from_file_location(
+        "suggest_env",
+        Path(__file__).resolve().parents[3] / "skills" / "suggest" / "suggest.py",
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.SUGGEST_DIR == custom
+
+
+def test_suggest_dir_default_without_env(monkeypatch):
+    """Without SUGGEST_DIR env var, falls back to ~/Documents/skill-suggestions."""
+    monkeypatch.delenv("SUGGEST_DIR", raising=False)
+    spec = importlib.util.spec_from_file_location(
+        "suggest_default",
+        Path(__file__).resolve().parents[3] / "skills" / "suggest" / "suggest.py",
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.SUGGEST_DIR == Path.home() / "Documents" / "skill-suggestions"

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,7 +16,7 @@ from typing import Annotated
 import typer
 from toon_format import encode
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 app = typer.Typer()
 
@@ -25,7 +26,8 @@ def _version_callback(value: bool) -> None:
         print(f"suggest {__version__}")
         raise typer.Exit
 
-SUGGEST_DIR = Path.home() / "Documents" / "skill-suggestions"
+_DEFAULT_DIR = Path.home() / "Documents" / "skill-suggestions"
+SUGGEST_DIR = Path(os.environ["SUGGEST_DIR"]) if "SUGGEST_DIR" in os.environ else _DEFAULT_DIR
 
 
 def _save(skill: str, text: str) -> Path:

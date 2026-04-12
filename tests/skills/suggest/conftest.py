@@ -12,10 +12,9 @@ def suggest(skill_loader):
 def suggest_dir(suggest, tmp_path):
     """Redirect SUGGEST_DIR to tmp_path for test isolation.
 
-    SUGGEST_DIR is intentionally not exposed as a CLI flag (would pollute agent
-    context with an option agents should never change) or env var (adds
-    indirection for no real benefit). Overriding the module attribute is the
-    simplest approach for a destination that must stay fixed in production.
+    In production, SUGGEST_DIR is configured via the SUGGEST_DIR env var
+    (defaulting to ~/Documents/skill-suggestions). Tests override the module
+    attribute directly for simplicity.
     """
     original = suggest.SUGGEST_DIR
     suggest.SUGGEST_DIR = tmp_path

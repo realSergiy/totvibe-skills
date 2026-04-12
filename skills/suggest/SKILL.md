@@ -2,39 +2,52 @@
 name: suggest
 description: >
   Submit structured improvement suggestions for CLI skills — bugs, missing features, inefficiencies, or token waste.
-  Use PROACTIVELY whenever you hit a skill gap, write a workaround, or notice verbose/redundant output.
-  If a skill could be simpler, more token-efficient, or cover your use case — say so immediately, don't wait.
+  BLOCKING REQUIREMENT: When you write a workaround for a skill limitation (python one-liner, extra parsing, manual post-processing),
+  you MUST submit a /suggest IMMEDIATELY — before continuing the task. Do not batch suggestions for later.
 metadata:
-  version: "0.2.1"
+  version: "0.3.0"
   user-invocable: "true"
   argument-hint: <skill-name> [<markdown-text> | -]
 ---
 
 # suggest — skill improvement suggestions
 
-`suggest` is a standalone CLI installed on PATH. Invoke it directly via Bash: `Bash(suggest peek "## description of the issue ...")`
+`suggest` is a standalone CLI on PATH. Invoke via Bash: `Bash(suggest peek "# title ...")`
 
-Skills evolve through use. When you notice a skill falling short — wrong output, missing mode, wasteful tokens, clunky interface — submit a suggestion so it gets better.
+Skills evolve through use. When a skill falls short — wrong output, missing mode, wasteful tokens, clunky interface — submit a suggestion so it gets better.
 
 ## When to suggest
 
 - **You wrote a workaround** — a `python -c` one-liner, extra parsing, post-processing that the skill should have handled
-- **Output was wasteful** — verbose, redundant, or structured in a way that burns tokens without adding information
-- **Interface could be simpler** — flags that could be merged, defaults that are wrong for the common case, inputs that require unnecessary ceremony
+- **Output was wasteful** — verbose, redundant, or burns tokens without adding information
+- **Interface friction** — flags that could be merged, wrong defaults for the common case, unnecessary ceremony
 - **A skill errored or gave wrong results** on valid input
 - **A skill you needed doesn't exist** — and the use case is common enough to justify one
 
 Skip suggestions for user errors or things outside the skill's scope.
 
-## Suggestion structure
+## Suggestion format
 
-Structure your suggestion around these five questions. Be concrete — vague suggestions are noise.
+Each suggestion is a markdown file. Use `#` (h1) for the title and `##` (h2) for sections — standard markdown hierarchy. Be concrete; vague suggestions are noise.
 
-1. **Context** — what were you doing when you hit this?
-2. **Gap** — what did you try, what happened, what should have happened? Include the command and output.
-3. **Responsibility** — why should the skill handle this, not the caller? If you wrote a workaround, include it — it proves the need.
-4. **Suggestion** — what should change? A new flag, different default, leaner output format?
-5. **Impact** — one line: how does this fix improve the workflow?
+```markdown
+# <Short descriptive title of the issue>
+
+## Context
+What were you doing when you hit this?
+
+## Gap
+What did you try, what happened, what should have happened? Include the command and output.
+
+## Responsibility
+Why should the skill handle this, not the caller? If you wrote a workaround, include it — it proves the need.
+
+## Suggestion
+What should change? A new flag, different default, leaner output format?
+
+## Impact
+One line: how does this fix improve the workflow?
+```
 
 ## Usage
 
@@ -48,26 +61,30 @@ When the suggestion is long or contains complex markdown with backticks/quotes, 
 ## Example
 
 ```bash
-suggest peek "## peek -c output is too verbose for multi-file scans
+suggest peek "# peek -c output is too verbose for multi-file scans
 
-### Context
+## Context
 Scanning 12 parquet files to find which ones contain a 'user_id' column.
 
-### Gap
+## Gap
 \`peek data/*.parquet -c\` prints full schema for every file. I only needed column names, but got types and row counts too — ~60 lines of output when 12 would do.
 
-### Responsibility
+## Responsibility
 Schema scanning across many files is a core peek use case. The caller shouldn't need to pipe through grep to get a compact answer.
 
-### Suggestion
+## Suggestion
 Add a \`--names-only\` modifier for \`-c\` that prints just column names, one file per line. Or: make \`-c\` output more compact by default and add \`-cv\` for the verbose version.
 
-### Impact
+## Impact
 Cuts token usage ~5x for multi-file schema scans — the most common first step when exploring a new dataset directory."
 ```
+
+## Configuration
+
+Set the `SUGGEST_DIR` environment variable to change where suggestions are saved. Defaults to `~/Documents/skill-suggestions/`.
 
 ## Output
 
 ```text
-saved: ~/Documents/skill-suggestions/peek/suggestion_20260403_141523_012345.md
+saved: $SUGGEST_DIR/peek/suggestion_20260403_141523_012345.md
 ```

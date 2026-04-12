@@ -133,7 +133,6 @@ def main(
     for p in path:
         paths.extend(_resolve_paths(p))
 
-    # SQL mode: register all files into one query context
     if query is not None:
         frames = [(p.stem, pl.read_parquet(p)) for p in paths]
         print(encode(_sql(frames, query)))
