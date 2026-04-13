@@ -1,7 +1,8 @@
 """Shared fixtures for skill tests.
 
-Provides skill loading, CLI runner, and exit-code-asserting invoke.
-Skill-specific conftest files build on these via fixture injection.
+Provides skill loading, CLI runner, exit-code-asserting invoke,
+and TOON decoding. Skill-specific conftest files build on these
+via fixture injection.
 """
 
 from __future__ import annotations
@@ -9,8 +10,10 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
+from toon_format import decode as _decode
 from typer.testing import CliRunner
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
@@ -51,3 +54,15 @@ def run(runner):
         return result
 
     return _run
+
+
+@pytest.fixture
+def decode():
+    """Return a typed TOON decode helper."""
+
+    def _fn(text: str) -> dict[str, Any]:
+        result = _decode(text)
+        assert isinstance(result, dict)
+        return result
+
+    return _fn

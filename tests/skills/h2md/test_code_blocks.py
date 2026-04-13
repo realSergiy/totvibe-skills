@@ -113,3 +113,15 @@ def test_class_prefix_wins_over_data_attr(pipeline):
     </article></body></html>"""
     r = pipeline(html)
     assert "```rust" in r.md
+
+
+def test_text_class_overridden_by_sniffed_language(pipeline):
+    html = """<!DOCTYPE html><html><body><article>
+    <h1>Title</h1>
+    <p>Some text explaining this JavaScript code example for developers.</p>
+    <pre><code class="language-text">const app = express()
+app.listen(3000)</code></pre>
+    </article></body></html>"""
+    r = pipeline(html)
+    assert "```javascript" in r.md
+    assert "```text" not in r.md

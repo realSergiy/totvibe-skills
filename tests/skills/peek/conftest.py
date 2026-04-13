@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
 from pathlib import Path
 
 import pytest
-from toon_format import decode as _decode
 
 FIXTURE_PATH = Path(__file__).parent / "tourney_points.parquet"
 
@@ -30,15 +28,3 @@ def invoke(run, peek, fixture_path):
         return run(peek.app, cmd, **kwargs)
 
     return _invoke
-
-
-@pytest.fixture
-def decode():
-    """Return a typed TOON decode helper."""
-
-    def _fn(text: str) -> dict[str, Any]:
-        result = _decode(text)
-        assert isinstance(result, dict)
-        return result
-
-    return _fn

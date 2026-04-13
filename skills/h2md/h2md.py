@@ -30,9 +30,9 @@ import typer
 from bs4 import BeautifulSoup, Tag
 from bs4.element import NavigableString
 from markdownify import MarkdownConverter
-from toon_format import encode
+from toon_format import decode, encode
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 app = typer.Typer()
 
@@ -50,7 +50,6 @@ def _fetch(workspace: Path, url: str) -> None:
     with httpx.Client(follow_redirects=True, timeout=30, headers={"User-Agent": USER_AGENT}) as client:
         resp = client.get(url)
         resp.raise_for_status()
-    (workspace / "source.url").write_text(url + "\n")
     (workspace / "raw.html").write_bytes(resp.content)
     headers_data = {
         "status_code": resp.status_code,
@@ -58,7 +57,7 @@ def _fetch(workspace: Path, url: str) -> None:
         "headers": dict(resp.headers),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
-    (workspace / "raw.headers.json").write_text(json.dumps(headers_data, indent=2) + "\n")
+    (workspace / "raw.headers.toon").write_text(encode(headers_data) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +377,7 @@ def _extract(workspace: Path, selector: str | None) -> None:
     meta["word_count"] = words
     meta["reading_time_minutes"] = max(1, round(words / 250))
 
-    (workspace / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
+    (workspace / "meta.toon").write_text(encode(meta) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -585,8 +584,10 @@ def _context_around(text: str, start: int, end: int, ctx: int = 40) -> str:
 
 def _normalize(workspace: Path) -> None:
     md = (workspace / "article.raw.md").read_text()
-    meta_path = workspace / "meta.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    meta_path = workspace / "meta.toon"
+    meta = decode(meta_path.read_text()) if meta_path.exists() else {}
+    if not isinstance(meta, dict):
+        meta = {}
 
     frontmatter_lines = ["---"]
     if meta.get("title"):
@@ -642,27 +643,30 @@ def _lint(workspace: Path) -> None:
     (workspace / "lint.report.txt").write_text(result.stdout + result.stderr)
 
 
-def _detect(workspace: Path) -> None:
+def _detect(workspace: Path) -> list[dict]:
     article = workspace / "article.md"
     if not article.exists():
-        return
+        return []
     md = article.read_text()
-    issues: list[str] = []
+    issues: list[dict] = []
     zones = _exclusion_zones(md)
 
     for m in _FUSED_RE.finditer(md):
         if _in_exclusion_zone(m.start(), m.end(), zones):
             continue
+        line_num = md[:m.start()].count("\n") + 1
         ctx = _context_around(md, m.start(), m.end())
-        issues.append(f"## Likely fused text\n**Find:** `{ctx}`\n**Source check:** article.html\n**Suggested fix:** verify whitespace between tokens\n")
+        issues.append({"type": "fused text", "line": line_num, "find": ctx, "fix": "verify whitespace between tokens"})
 
     for m in _HTML_LEAK_RE.finditer(md):
+        line_num = md[:m.start()].count("\n") + 1
         ctx = _context_around(md, m.start(), m.end())
-        issues.append(f"## HTML leakage\n**Find:** `{ctx}`\n**Source check:** article.html\n**Suggested fix:** remove or convert to markdown\n")
+        issues.append({"type": "HTML leakage", "line": line_num, "find": ctx, "fix": "remove or convert to markdown"})
 
     for m in _EMPTY_BLOCK_RE.finditer(md):
+        line_num = md[:m.start()].count("\n") + 1
         ctx = _context_around(md, m.start(), m.end(), 20)
-        issues.append(f"## Empty code block\n**Find:** `{ctx}`\n**Suggested fix:** remove empty fence\n")
+        issues.append({"type": "empty code block", "line": line_num, "find": ctx, "fix": "remove empty fence"})
 
     for m in _FENCE_LANG_RE.finditer(md):
         lang = m.group(1)
@@ -674,22 +678,21 @@ def _detect(workspace: Path) -> None:
         sniffed = _sniff_language(content)
         if sniffed != "text":
             line_num = md[:m.start()].count("\n") + 1
-            issues.append(f"## Likely wrong language\n**Line:** {line_num}\n**Detected:** `{sniffed}`\n**Suggested fix:** change fence to ```{sniffed}\n")
+            issues.append({"type": "wrong language", "line": line_num, "detected": sniffed, "fix": f"change fence to ```{sniffed}"})
 
     lines = md.split("\n")
     for i, line in enumerate(lines[:-1]):
         if _TAB_LABEL_RE.match(line.strip()) and i + 1 < len(lines) and lines[i + 1].strip().startswith("```"):
             ctx = f"{line.strip()}\\n{lines[i+1].strip()}"
-            issues.append(f"## Suspicious tab label\n**Find:** `{ctx}`\n**Suggested fix:** merge as prose prefix or remove\n")
+            issues.append({"type": "suspicious tab label", "line": i + 1, "find": ctx, "fix": "merge as prose prefix or remove"})
 
-    notes = "\n".join(issues) if issues else ""
-    (workspace / "notes.md").write_text(notes)
+    return issues
 
 
-def _build_toc(workspace: Path) -> dict:
+def _build_sections(workspace: Path) -> list[dict]:
     article = workspace / "article.md"
     if not article.exists():
-        return {"sections": [], "summary": {}}
+        return []
     md = article.read_text()
     lines = md.split("\n")
 
@@ -697,112 +700,54 @@ def _build_toc(workspace: Path) -> dict:
     for i, line in enumerate(lines):
         m = re.match(r"^(#{1,6})\s+(.+)$", line)
         if m:
-            sections.append({"level": len(m.group(1)), "title": m.group(2).strip(), "line": i + 1})
-
-    fence_lines: list[tuple[int, str]] = []
-    in_fence = False
-    for i, line in enumerate(lines):
-        if line.startswith("```"):
-            if not in_fence:
-                in_fence = True
-                fence_lines.append((i + 1, line[3:].strip() or "text"))
-            else:
-                in_fence = False
-
-    notes_path = workspace / "notes.md"
-    notes_text = notes_path.read_text() if notes_path.exists() else ""
-    issue_positions: list[int] = [int(m.group(1)) for m in re.finditer(r"\*\*Line:\*\*\s*(\d+)", notes_text)]
-    find_issues = notes_text.count("## ") if notes_text.strip() else 0
-    unlocated_issues = find_issues - len(issue_positions)
-
-    total_code = len(fence_lines)
-    total_issues = find_issues
-    sections_with_issues = 0
-    lang_counts: dict[str, int] = {}
+            sections.append({"title": m.group(2).strip(), "line": i + 1})
 
     for idx, sec in enumerate(sections):
         start = sec["line"]
         end = sections[idx + 1]["line"] - 1 if idx + 1 < len(sections) else len(lines)
+        section_text = "\n".join(lines[start:min(end, len(lines))])
+        sec["tokens"] = len(section_text) // 4
 
-        word_parts: list[str] = []
-        in_f = False
-        for i in range(start, min(end, len(lines))):
-            ln = lines[i]
-            if ln.startswith("```"):
-                in_f = not in_f
-                continue
-            if not in_f:
-                word_parts.append(ln)
-        sec["words"] = len(" ".join(word_parts).split())
-
-        sec_fences = [(fl, lang) for fl, lang in fence_lines if start <= fl <= end]
-        sec["code_blocks"] = len(sec_fences)
-        for _, lang in sec_fences:
-            lang_counts[lang] = lang_counts.get(lang, 0) + 1
-
-        sec["issues"] = sum(1 for il in issue_positions if start <= il <= end)
-        if sec["issues"]:
-            sections_with_issues += 1
-
-    toc_data = {
-        "sections": sections,
-        "summary": {
-            "total_sections": len(sections),
-            "total_code_blocks": total_code,
-            "code_languages": lang_counts,
-            "total_issues": total_issues,
-            "sections_with_issues": sections_with_issues,
-        },
-    }
-    if unlocated_issues > 0:
-        toc_data["summary"]["unlocated_issues"] = unlocated_issues
-    (workspace / "toc.toon").write_text(encode(toc_data) + "\n")
-    return toc_data
+    return sections
 
 
-def _postprocess(workspace: Path) -> None:
+def _postprocess(workspace: Path) -> tuple[list[dict], list[dict]]:
     _normalize(workspace)
     _lint(workspace)
-    _detect(workspace)
-    _build_toc(workspace)
+    issues = _detect(workspace)
+    sections = _build_sections(workspace)
+    return issues, sections
 
 
 # ---------------------------------------------------------------------------
 # Stage 6: Handoff
 # ---------------------------------------------------------------------------
 
-def _handoff(workspace: Path, url: str) -> None:
-    meta_path = workspace / "meta.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-    notes_path = workspace / "notes.md"
-    notes_text = notes_path.read_text() if notes_path.exists() else ""
-    issue_count = notes_text.count("## ") if notes_text.strip() else 0
+def _handoff(workspace: Path, url: str, issues: list[dict], sections: list[dict]) -> None:
+    meta_path = workspace / "meta.toon"
+    meta = decode(meta_path.read_text()) if meta_path.exists() else {}
+    if not isinstance(meta, dict):
+        meta = {}
     lint_path = workspace / "lint.report.txt"
     lint_text = lint_path.read_text() if lint_path.exists() else ""
     lint_remaining = len([ln for ln in lint_text.strip().split("\n") if ln.strip() and "not found" not in ln.lower()])
 
-    toc_path = workspace / "toc.toon"
-    toc_summary: dict = {}
-    if toc_path.exists():
-        from toon_format import decode
-        toc_raw = decode(toc_path.read_text())
-        if isinstance(toc_raw, dict):
-            summary = toc_raw.get("summary")
-            if isinstance(summary, dict):
-                toc_summary = summary
-
-    output = {
+    output: dict = {
         "h2md": {
             "url": url,
             "workspace": str(workspace),
             "article": "article.md",
-            "words": meta.get("word_count", 0),
-            "issues": issue_count,
+            "title": meta.get("title", ""),
+            "tokens": sum(s.get("tokens", 0) for s in sections),
             "lint_remaining": lint_remaining,
         },
-        "toc": toc_summary,
-        "next": "Read toc.toon for section map. Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity.",
+        "sections": sections,
     }
+    if issues:
+        output["issues"] = issues
+        output["next"] = "Edit article.md to fix issues. Cross-reference article.html for fidelity."
+    else:
+        output["next"] = "Article is clean. Read article.md."
     print(encode(output))
 
 
@@ -836,7 +781,6 @@ def main(
         ("extract", lambda: _extract(workspace, selector)),
         ("assets", lambda: _assets(workspace, no_assets)),
         ("convert", lambda: _convert(workspace)),
-        ("postprocess", lambda: _postprocess(workspace)),
     ]
 
     for name, fn in stages:
@@ -846,10 +790,16 @@ def main(
             typer.echo(f"Stage '{name}' failed: {exc}", err=True)
             raise typer.Exit(1)
 
+    try:
+        issues, sections = _postprocess(workspace)
+    except Exception as exc:
+        typer.echo(f"Stage 'postprocess' failed: {exc}", err=True)
+        raise typer.Exit(1)
+
     if copy_to:
         shutil.copy2(workspace / "article.md", copy_to)
 
-    _handoff(workspace, url)
+    _handoff(workspace, url, issues, sections)
 
 
 if __name__ == "__main__":

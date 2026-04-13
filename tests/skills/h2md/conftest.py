@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import json
 import subprocess
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from unittest.mock import patch
 
 import pytest
-from toon_format import decode as _decode
-from typer.testing import CliRunner
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -35,16 +32,20 @@ def read_fixture():
 
 
 @pytest.fixture
-def decode():
-    def _fn(text: str) -> dict[str, Any]:
-        result = _decode(text)
-        assert isinstance(result, dict)
-        return result
-    return _fn
+def invoke(run, h2md):
+    def _invoke(*args: str, **kwargs):
+        return run(h2md.app, args, **kwargs)
+    return _invoke
 
 
 def _mock_subprocess_run(*args, **kwargs):
     return subprocess.CompletedProcess(args=args[0] if args else [], returncode=0, stdout="", stderr="")
+
+
+@pytest.fixture
+def mock_lint():
+    with patch("subprocess.run", side_effect=_mock_subprocess_run):
+        yield
 
 
 @pytest.fixture
@@ -79,26 +80,20 @@ def serve_html():
 
 
 @pytest.fixture
-def pipeline(h2md, serve_html, decode):
+def pipeline(h2md, run, serve_html, decode, mock_lint):
     def _run(html: str, *, selector: str | None = None, url: str | None = None):
         serve_url = serve_html(html)
         cli_args = [url or serve_url, "--no-assets"]
         if selector:
             cli_args.extend(["--selector", selector])
-        from unittest.mock import patch
-        with patch("subprocess.run", side_effect=_mock_subprocess_run):
-            runner = CliRunner()
-            result = runner.invoke(h2md.app, cli_args)
-        assert result.exit_code == 0, result.output
+        result = run(h2md.app, cli_args)
         d = decode(result.output)
         ws = Path(d["h2md"]["workspace"])
-        toc_path = ws / "toc.toon"
-        toc = _decode(toc_path.read_text()) if toc_path.exists() else {}
         return SimpleNamespace(
             md=(ws / "article.md").read_text(),
-            meta=json.loads((ws / "meta.json").read_text()),
-            notes=(ws / "notes.md").read_text(),
-            toc=toc,
+            meta=decode((ws / "meta.toon").read_text()),
+            issues=d.get("issues", []),
+            sections=d["sections"],
             toon=d,
             workspace=ws,
         )
