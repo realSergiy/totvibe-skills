@@ -6,7 +6,7 @@ description: >
   Use this whenever you need article content as markdown — blog posts, docs, release notes, changelogs.
   Never manually fetch+parse HTML or use WebFetch for article extraction when h2md is available.
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
   user-invocable: "true"
   argument-hint: <url> [--no-assets] [--selector SEL]
 ---
@@ -25,7 +25,6 @@ content through a small summarizer model and loses code blocks, exact wording, a
 h2md <url>                                # convert article, workspace in /tmp/h2md_*/
 h2md <url> --no-assets                    # skip image download
 h2md <url> --selector "div.post-body"     # CSS selector override for extraction
-h2md <url> --lint "markdownlint --fix"    # override lint command (default: rumdl check --fix)
 ```
 
 ## Options
@@ -34,7 +33,6 @@ h2md <url> --lint "markdownlint --fix"    # override lint command (default: rumd
 |------|---------|---------|
 | `--no-assets` | off | Skip image download |
 | `--js` | off | JS rendering (requires playwright) |
-| `--lint CMD` | `rumdl check --fix` | Lint command |
 | `--selector SEL` | auto-detect | CSS selector for extraction |
 
 ## Workspace layout

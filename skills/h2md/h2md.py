@@ -34,11 +34,10 @@ from markdownify import MarkdownConverter
 from readability import Document
 from toon_format import encode
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 app = typer.Typer()
 
-DEFAULT_LINT_CMD = "rumdl check --fix"
 USER_AGENT = "Mozilla/5.0 (compatible; h2md/0.1; +https://github.com/totvibe/skills)"
 
 STRIP_TAGS = {"script", "style", "button", "svg", "nav", "footer", "header", "noscript"}
@@ -619,22 +618,21 @@ def _normalize(workspace: Path) -> None:
 # Stage 7: Lint
 # ---------------------------------------------------------------------------
 
-def _lint(workspace: Path, lint_cmd: str) -> None:
+def _lint(workspace: Path) -> None:
     prelint = workspace / "article.prelint.md"
     article = workspace / "article.md"
     shutil.copy2(prelint, article)
 
-    lint_parts = lint_cmd.split()
-    lint_exe = lint_parts[0] if lint_parts else "rumdl"
-
-    if not shutil.which(lint_exe):
-        (workspace / "lint.report.txt").write_text(f"{lint_exe} not found on PATH, skipping lint\n")
+    if not shutil.which("rumdl"):
+        (workspace / "lint.report.txt").write_text("rumdl not found on PATH, skipping lint\n")
         return
 
-    subprocess.run([*lint_parts, str(article)], capture_output=True, text=True)
+    config = Path(__file__).resolve().parent / ".rumdl.toml"
+    cfg_args = ["--config", str(config)] if config.exists() else []
 
-    check_cmd = [lint_exe, "check", str(article)]
-    result = subprocess.run(check_cmd, capture_output=True, text=True)
+    subprocess.run(["rumdl", "check", "--fix", *cfg_args, str(article)], capture_output=True, text=True)
+
+    result = subprocess.run(["rumdl", "check", *cfg_args, str(article)], capture_output=True, text=True)
     (workspace / "lint.report.txt").write_text(result.stdout + result.stderr)
 
 
@@ -750,7 +748,6 @@ def main(
     url: Annotated[str, typer.Argument(help="URL of the article to convert")],
     no_assets: Annotated[bool, typer.Option("--no-assets", help="Skip image download")] = False,
     js: Annotated[bool, typer.Option("--js", help="JS rendering (requires playwright)")] = False,
-    lint_cmd: Annotated[str, typer.Option("--lint", help="Lint command")] = DEFAULT_LINT_CMD,
     selector: Annotated[str | None, typer.Option("--selector", help="CSS selector for extraction")] = None,
     version: Annotated[bool | None, typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version")] = None,
 ) -> None:
@@ -767,7 +764,7 @@ def main(
         ("assets", lambda: _assets(workspace, no_assets)),
         ("convert", lambda: _convert(workspace)),
         ("normalize", lambda: _normalize(workspace)),
-        ("lint", lambda: _lint(workspace, lint_cmd)),
+        ("lint", lambda: _lint(workspace)),
         ("detect", lambda: _detect(workspace)),
     ]
 

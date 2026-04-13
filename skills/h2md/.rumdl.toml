@@ -1,0 +1,5 @@
+[global]
+disable = ["MD033", "MD013"]
+
+[MD024]
+siblings-only = true
