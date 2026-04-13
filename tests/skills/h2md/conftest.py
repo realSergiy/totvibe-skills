@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
+import subprocess
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 from toon_format import decode as _decode
+from typer.testing import CliRunner
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -13,13 +18,6 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures"
 @pytest.fixture(scope="session")
 def h2md(skill_loader):
     return skill_loader("h2md")
-
-
-@pytest.fixture
-def workspace(tmp_path):
-    ws = tmp_path / "workspace"
-    ws.mkdir()
-    return ws
 
 
 @pytest.fixture
@@ -37,13 +35,6 @@ def read_fixture():
 
 
 @pytest.fixture
-def invoke(run, h2md):
-    def _invoke(*args: str, **kwargs):
-        return run(h2md.app, args, **kwargs)
-    return _invoke
-
-
-@pytest.fixture
 def decode():
     def _fn(text: str) -> dict[str, Any]:
         result = _decode(text)
@@ -52,22 +43,60 @@ def decode():
     return _fn
 
 
+def _mock_subprocess_run(*args, **kwargs):
+    return subprocess.CompletedProcess(args=args[0] if args else [], returncode=0, stdout="", stderr="")
+
+
 @pytest.fixture
-def mock_fetch(h2md):
-    def _mock(html_content: str, status_code: int = 200, url: str = "https://example.com/article"):
-        mock_response = MagicMock()
-        mock_response.content = html_content.encode()
-        mock_response.text = html_content
-        mock_response.status_code = status_code
-        mock_response.url = url
-        mock_response.headers = {"content-type": "text/html"}
-        mock_response.raise_for_status = MagicMock()
+def serve_html():
+    servers: list[HTTPServer] = []
 
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.get = MagicMock(return_value=mock_response)
+    def _serve(html: str, *, content_type: str = "text/html") -> str:
+        body = html.encode()
 
-        return patch.object(h2md.httpx, "Client", return_value=mock_client)
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
 
-    return _mock
+            def log_message(self, format, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        servers.append(server)
+        return f"http://127.0.0.1:{port}/article"
+
+    yield _serve
+
+    for s in servers:
+        s.shutdown()
+
+
+@pytest.fixture
+def pipeline(h2md, serve_html, decode):
+    def _run(html: str, *, selector: str | None = None, url: str | None = None):
+        serve_url = serve_html(html)
+        cli_args = [url or serve_url, "--no-assets"]
+        if selector:
+            cli_args.extend(["--selector", selector])
+        from unittest.mock import patch
+        with patch("subprocess.run", side_effect=_mock_subprocess_run):
+            runner = CliRunner()
+            result = runner.invoke(h2md.app, cli_args)
+        assert result.exit_code == 0, result.output
+        d = decode(result.output)
+        ws = Path(d["h2md"]["workspace"])
+        return SimpleNamespace(
+            md=(ws / "article.md").read_text(),
+            meta=json.loads((ws / "meta.json").read_text()),
+            notes=(ws / "notes.md").read_text(),
+            toon=d,
+            workspace=ws,
+        )
+    return _run
