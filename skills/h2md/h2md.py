@@ -5,7 +5,6 @@
 #     "httpx>=0.28",
 #     "beautifulsoup4>=4.13",
 #     "lxml>=5.0",
-#     "readability-lxml>=0.8",
 #     "markdownify>=0.14",
 #     "typer>=0.15",
 #     "toon-format>=0.9.0b1",
@@ -21,7 +20,7 @@ import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timezone
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
@@ -31,7 +30,6 @@ import typer
 from bs4 import BeautifulSoup, Tag
 from bs4.element import NavigableString
 from markdownify import MarkdownConverter
-from readability import Document
 from toon_format import encode
 
 __version__ = "0.4.0"
@@ -64,7 +62,27 @@ def _fetch(workspace: Path, url: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Stage 2: Extract (structural preprocessing + article extraction)
+# Shared: tab-flattening helper
+# ---------------------------------------------------------------------------
+
+def _build_flat_tabs(soup: BeautifulSoup, labels: list[str], panels: Sequence[Tag | None]) -> Tag:
+    replacement = soup.new_tag("div", attrs={"class": "h2md-flattened-tabs"})
+    for label, panel in zip(labels, panels):
+        if not panel:
+            continue
+        heading = soup.new_tag("h4")
+        heading.string = label
+        replacement.append(heading)
+        for child in list(panel.children):
+            if isinstance(child, Tag):
+                replacement.append(child.extract())
+            elif isinstance(child, NavigableString) and child.strip():
+                replacement.append(child.extract())
+    return replacement
+
+
+# ---------------------------------------------------------------------------
+# Stage 2: Extract (structural preprocessing + article extraction + metadata)
 # ---------------------------------------------------------------------------
 
 def _collapse_code_spans(soup: BeautifulSoup) -> None:
@@ -92,12 +110,6 @@ def _insert_span_whitespace(tag: Tag) -> None:
             curr_text = child.get_text()
             if prev_text and curr_text and not prev_text.endswith((" ", "\n")) and not curr_text.startswith((" ", "\n")):
                 child.insert_before(" ")
-        elif isinstance(prev, NavigableString):
-            text = str(prev)
-            if text and not text.endswith((" ", "\n")):
-                nxt_text = child.get_text()
-                if nxt_text and not nxt_text.startswith((" ", "\n")):
-                    pass
 
 
 def _flatten_tablists(soup: BeautifulSoup) -> None:
@@ -124,19 +136,7 @@ def _flatten_tablists(soup: BeautifulSoup) -> None:
                 node = node.next_sibling if node else None
             panels = siblings + [None] * (len(labels) - len(siblings))
 
-        replacement = soup.new_tag("div", attrs={"class": "h2md-flattened-tabs"})
-        for label, panel in zip(labels, panels):
-            if not panel:
-                continue
-            heading = soup.new_tag("h4")
-            heading.string = label
-            replacement.append(heading)
-            for child in list(panel.children):
-                if isinstance(child, Tag):
-                    replacement.append(child.extract())
-                elif isinstance(child, NavigableString) and child.strip():
-                    replacement.append(child.extract())
-
+        replacement = _build_flat_tabs(soup, labels, panels)
         tablist.replace_with(replacement)
         for panel in panels:
             if panel and isinstance(panel, Tag) and panel.parent:
@@ -175,17 +175,7 @@ def _flatten_class_tabs(soup: BeautifulSoup) -> None:
         if not panels:
             continue
 
-        replacement = soup.new_tag("div", attrs={"class": "h2md-flattened-tabs"})
-        for label, panel in zip(labels, panels):
-            heading = soup.new_tag("h4")
-            heading.string = label
-            replacement.append(heading)
-            for child in list(panel.children):
-                if isinstance(child, Tag):
-                    replacement.append(child.extract())
-                elif isinstance(child, NavigableString) and child.strip():
-                    replacement.append(child.extract())
-
+        replacement = _build_flat_tabs(soup, labels, panels)
         container.replace_with(replacement)
 
 
@@ -268,11 +258,6 @@ def _extract_article(soup: BeautifulSoup, raw_html: str, selector: str | None) -
         if len(text) > 100:
             return str(main)
 
-    doc = Document(raw_html)
-    summary = doc.summary()
-    if summary and len(BeautifulSoup(summary, "lxml").get_text(strip=True)) > 100:
-        return summary
-
     best = None
     best_len = 0
     for div in soup.find_all("div"):
@@ -289,105 +274,80 @@ def _extract_article(soup: BeautifulSoup, raw_html: str, selector: str | None) -
     return str(soup.body) if soup.body else str(soup)
 
 
-def _extract(workspace: Path, selector: str | None) -> None:
-    raw_html = (workspace / "raw.html").read_text(errors="replace")
-    soup = BeautifulSoup(raw_html, "lxml")
-    soup = _preprocess_dom(soup)
-    article_html = _extract_article(soup, raw_html, selector)
-    (workspace / "article.html").write_text(article_html)
+_JSONLD_ARTICLE_TYPES = {"Article", "BlogPosting", "NewsArticle", "TechArticle"}
+
+_OG_MAP = {
+    "og:title": "title", "og:description": "description",
+    "og:url": "canonical_url", "og:image": "og_image",
+    "og:site_name": "site_name", "og:locale": "lang",
+    "article:author": "author", "article:published_time": "date",
+}
+
+_TW_MAP = {"twitter:title": "title", "twitter:description": "description", "twitter:image": "og_image"}
 
 
-# ---------------------------------------------------------------------------
-# Stage 3: Metadata
-# ---------------------------------------------------------------------------
-
-def _parse_jsonld(soup: BeautifulSoup) -> dict:
+def _extract_metadata(soup: BeautifulSoup) -> dict:
     meta: dict = {}
+
     for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
         try:
             data = json.loads(script.string or "")
         except (json.JSONDecodeError, TypeError):
             continue
         if isinstance(data, list):
-            data = next((d for d in data if d.get("@type") in ("Article", "BlogPosting", "NewsArticle", "TechArticle")), {})
-        if data.get("@type") in ("Article", "BlogPosting", "NewsArticle", "TechArticle"):
-            meta["title"] = meta.get("title") or data.get("headline")
-            author = data.get("author")
-            if isinstance(author, dict):
-                meta["author"] = author.get("name")
-            elif isinstance(author, list) and author:
-                names = [a.get("name", str(a)) if isinstance(a, dict) else str(a) for a in author]
-                meta["author"] = ", ".join(n for n in names if n)
-            meta["date"] = meta.get("date") or data.get("datePublished")
-            meta["description"] = meta.get("description") or data.get("description")
-            meta["canonical_url"] = meta.get("canonical_url") or data.get("url")
-    return meta
+            data = next((d for d in data if d.get("@type") in _JSONLD_ARTICLE_TYPES), {})
+        if data.get("@type") not in _JSONLD_ARTICLE_TYPES:
+            continue
+        meta.setdefault("title", data.get("headline"))
+        author = data.get("author")
+        if isinstance(author, dict):
+            meta.setdefault("author", author.get("name"))
+        elif isinstance(author, list) and author:
+            names = [a.get("name", str(a)) if isinstance(a, dict) else str(a) for a in author]
+            meta.setdefault("author", ", ".join(n for n in names if n))
+        meta.setdefault("date", data.get("datePublished"))
+        meta.setdefault("description", data.get("description"))
+        meta.setdefault("canonical_url", data.get("url"))
 
-
-def _parse_og(soup: BeautifulSoup) -> dict:
-    meta: dict = {}
-    og_map = {
-        "og:title": "title",
-        "og:description": "description",
-        "og:url": "canonical_url",
-        "og:image": "og_image",
-        "og:site_name": "site_name",
-        "og:locale": "lang",
-        "article:author": "author",
-        "article:published_time": "date",
-    }
     for tag in soup.find_all("meta"):
         prop = str(tag.get("property", ""))
+        name = str(tag.get("name", "")).lower()
         content = str(tag.get("content", ""))
-        if prop in og_map and content:
-            meta.setdefault(og_map[prop], content)
-    return meta
+        if not content:
+            continue
+        if prop in _OG_MAP:
+            meta.setdefault(_OG_MAP[prop], content)
+        if name in _TW_MAP:
+            meta.setdefault(_TW_MAP[name], content)
+        if name == "author":
+            meta.setdefault("author", content)
+        elif name == "description":
+            meta.setdefault("description", content)
 
-
-def _parse_twitter(soup: BeautifulSoup) -> dict:
-    meta: dict = {}
-    tw_map = {"twitter:title": "title", "twitter:description": "description", "twitter:image": "og_image"}
-    for tag in soup.find_all("meta"):
-        name = str(tag.get("name", ""))
-        content = str(tag.get("content", ""))
-        if name in tw_map and content:
-            meta.setdefault(tw_map[name], content)
-    return meta
-
-
-def _parse_html_meta(soup: BeautifulSoup) -> dict:
-    meta: dict = {}
     title_tag = soup.find("title")
     if title_tag:
-        meta["title"] = title_tag.get_text(strip=True)
-    for tag in soup.find_all("meta"):
-        name = str(tag.get("name") or "").lower()
-        content = str(tag.get("content", ""))
-        if name == "author" and content:
-            meta.setdefault("author", content)
-        elif name == "description" and content:
-            meta.setdefault("description", content)
+        meta.setdefault("title", title_tag.get_text(strip=True))
+
     canonical = soup.find("link", attrs={"rel": "canonical"})
     if canonical and isinstance(canonical, Tag):
         meta.setdefault("canonical_url", str(canonical.get("href", "")))
+
     lang_tag = soup.find("html")
-    if lang_tag and isinstance(lang_tag, Tag):
-        lang = lang_tag.get("lang")
-        if lang:
-            meta["lang"] = lang
+    if lang_tag and isinstance(lang_tag, Tag) and lang_tag.get("lang"):
+        meta["lang"] = lang_tag["lang"]
+
     return meta
 
 
-def _metadata(workspace: Path) -> None:
+def _extract(workspace: Path, selector: str | None) -> None:
     raw_html = (workspace / "raw.html").read_text(errors="replace")
-    soup = BeautifulSoup(raw_html, "lxml")
+    raw_soup = BeautifulSoup(raw_html, "lxml")
+    meta = _extract_metadata(raw_soup)
 
-    meta: dict = {}
-    for parser in [_parse_jsonld, _parse_og, _parse_twitter, _parse_html_meta]:
-        for k, v in parser(soup).items():
-            meta.setdefault(k, v)
+    soup = _preprocess_dom(raw_soup)
+    article_html = _extract_article(soup, raw_html, selector)
+    (workspace / "article.html").write_text(article_html)
 
-    article_html = (workspace / "article.html").read_text(errors="replace")
     article_text = BeautifulSoup(article_html, "lxml").get_text(" ", strip=True)
     words = len(article_text.split())
     meta["word_count"] = words
@@ -397,7 +357,7 @@ def _metadata(workspace: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Stage 4: Assets
+# Stage 3: Assets
 # ---------------------------------------------------------------------------
 
 def _assets(workspace: Path, no_assets: bool) -> None:
@@ -435,7 +395,7 @@ def _assets(workspace: Path, no_assets: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Stage 5: Convert (HTML -> Markdown)
+# Stage 4: Convert (HTML -> Markdown)
 # ---------------------------------------------------------------------------
 
 LANG_PATTERNS: list[tuple[re.Pattern, str]] = [
@@ -503,21 +463,15 @@ def _lang_from_siblings(el: Tag) -> str | None:
     parent = el.parent
     if not parent or not isinstance(parent, Tag):
         return None
-    for _ in range(2):
-        for sibling in parent.children:
-            if sibling is el or not isinstance(sibling, Tag):
-                continue
-            text = sibling.get_text(strip=True).lower()
-            if text in _KNOWN_LANGS:
-                return text
-            for ext, lang in _EXT_TO_LANG.items():
-                if text.endswith(ext):
-                    return lang
-        if parent.parent and isinstance(parent.parent, Tag):
-            el = parent
-            parent = parent.parent
-        else:
-            break
+    for sibling in parent.children:
+        if sibling is el or not isinstance(sibling, Tag):
+            continue
+        text = sibling.get_text(strip=True).lower()
+        if text in _KNOWN_LANGS:
+            return text
+        for ext, lang in _EXT_TO_LANG.items():
+            if text.endswith(ext):
+                return lang
     return None
 
 
@@ -546,13 +500,9 @@ def _code_language_callback(el: Tag) -> str:
     return _sniff_language(code)
 
 
-class H2mdConverter(MarkdownConverter):
-    pass
-
-
 def _convert(workspace: Path) -> None:
     article_html = (workspace / "article.html").read_text(errors="replace")
-    converter = H2mdConverter(
+    converter = MarkdownConverter(
         heading_style="ATX",
         code_language="text",
         code_language_callback=_code_language_callback,
@@ -566,11 +516,43 @@ def _convert(workspace: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Stage 6: Normalize (pre-lint fixes)
+# Stage 5: Postprocess (normalize + lint + detect)
 # ---------------------------------------------------------------------------
 
 _BOLD_HEADING_RE = re.compile(r"^\*\*([A-Z][^*]{3,80})\*\*$")
 _EMPTY_FENCE_RE = re.compile(r"```[a-z]*\n\s*\n?```", re.MULTILINE)
+
+_FUSED_RE = re.compile(r"\S{50,}")
+_HTML_LEAK_RE = re.compile(r"<(svg|button|input|form)\b|role=[\"']")
+_EMPTY_BLOCK_RE = re.compile(r"```[a-z]*\n\s*\n?```")
+_TAB_LABEL_RE = re.compile(r"^[a-z]{2,15}$", re.IGNORECASE)
+_FENCE_RE = re.compile(r"^```[^\n]*\n.*?^```", re.MULTILINE | re.DOTALL)
+_MD_LINK_URL_RE = re.compile(r"\]\([^\)]+\)")
+_INLINE_CODE_RE = re.compile(r"`[^`]+`")
+
+
+def _exclusion_zones(md: str) -> list[tuple[int, int]]:
+    zones: list[tuple[int, int]] = []
+    for pattern in (_FENCE_RE, _MD_LINK_URL_RE, _INLINE_CODE_RE):
+        for m in pattern.finditer(md):
+            zones.append((m.start(), m.end()))
+    zones.sort()
+    return zones
+
+
+def _in_exclusion_zone(start: int, end: int, zones: list[tuple[int, int]]) -> bool:
+    for zs, ze in zones:
+        if zs > end:
+            break
+        if start < ze and end > zs:
+            return True
+    return False
+
+
+def _context_around(text: str, start: int, end: int, ctx: int = 40) -> str:
+    s = max(0, start - ctx)
+    e = min(len(text), end + ctx)
+    return text[s:e].replace("\n", "\\n")
 
 
 def _normalize(workspace: Path) -> None:
@@ -614,10 +596,6 @@ def _normalize(workspace: Path) -> None:
     (workspace / "article.prelint.md").write_text(md)
 
 
-# ---------------------------------------------------------------------------
-# Stage 7: Lint
-# ---------------------------------------------------------------------------
-
 def _lint(workspace: Path) -> None:
     prelint = workspace / "article.prelint.md"
     article = workspace / "article.md"
@@ -634,43 +612,6 @@ def _lint(workspace: Path) -> None:
 
     result = subprocess.run(["rumdl", "check", *cfg_args, str(article)], capture_output=True, text=True)
     (workspace / "lint.report.txt").write_text(result.stdout + result.stderr)
-
-
-# ---------------------------------------------------------------------------
-# Stage 8: Detect artifacts
-# ---------------------------------------------------------------------------
-
-_FUSED_RE = re.compile(r"\S{50,}")
-_HTML_LEAK_RE = re.compile(r"<(svg|button|input|form)\b|role=[\"']")
-_EMPTY_BLOCK_RE = re.compile(r"```[a-z]*\n\s*\n?```")
-_TAB_LABEL_RE = re.compile(r"^[a-z]{2,15}$", re.IGNORECASE)
-_FENCE_RE = re.compile(r"^```[^\n]*\n.*?^```", re.MULTILINE | re.DOTALL)
-_MD_LINK_URL_RE = re.compile(r"\]\([^\)]+\)")
-_INLINE_CODE_RE = re.compile(r"`[^`]+`")
-
-
-def _exclusion_zones(md: str) -> list[tuple[int, int]]:
-    zones: list[tuple[int, int]] = []
-    for pattern in (_FENCE_RE, _MD_LINK_URL_RE, _INLINE_CODE_RE):
-        for m in pattern.finditer(md):
-            zones.append((m.start(), m.end()))
-    zones.sort()
-    return zones
-
-
-def _in_exclusion_zone(start: int, end: int, zones: list[tuple[int, int]]) -> bool:
-    for zs, ze in zones:
-        if zs > end:
-            break
-        if start < ze and end > zs:
-            return True
-    return False
-
-
-def _context_around(text: str, start: int, end: int, ctx: int = 40) -> str:
-    s = max(0, start - ctx)
-    e = min(len(text), end + ctx)
-    return text[s:e].replace("\n", "\\n")
 
 
 def _detect(workspace: Path) -> None:
@@ -705,8 +646,14 @@ def _detect(workspace: Path) -> None:
     (workspace / "notes.md").write_text(notes)
 
 
+def _postprocess(workspace: Path) -> None:
+    _normalize(workspace)
+    _lint(workspace)
+    _detect(workspace)
+
+
 # ---------------------------------------------------------------------------
-# Stage 9: Handoff
+# Stage 6: Handoff
 # ---------------------------------------------------------------------------
 
 def _handoff(workspace: Path, url: str) -> None:
@@ -760,12 +707,9 @@ def main(
     stages: list[tuple[str, Callable[[], None]]] = [
         ("fetch", lambda: _fetch(workspace, url)),
         ("extract", lambda: _extract(workspace, selector)),
-        ("metadata", lambda: _metadata(workspace)),
         ("assets", lambda: _assets(workspace, no_assets)),
         ("convert", lambda: _convert(workspace)),
-        ("normalize", lambda: _normalize(workspace)),
-        ("lint", lambda: _lint(workspace)),
-        ("detect", lambda: _detect(workspace)),
+        ("postprocess", lambda: _postprocess(workspace)),
     ]
 
     for name, fn in stages:

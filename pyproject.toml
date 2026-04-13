@@ -2,6 +2,7 @@
 name = "totvibe-skills"
 requires-python = ">=3.14"
 version = "0.1.0"
+dependencies = []
 
 [dependency-groups]
 test = [
@@ -13,7 +14,6 @@ test = [
     "httpx>=0.28",
     "beautifulsoup4>=4.13",
     "lxml>=5.0",
-    "readability-lxml>=0.8",
     "markdownify>=0.14",
 ]
 lint = [
@@ -28,7 +28,6 @@ typecheck = [
     "httpx>=0.28",
     "beautifulsoup4>=4.13",
     "lxml>=5.0",
-    "readability-lxml>=0.8",
     "markdownify>=0.14",
 ]
 
