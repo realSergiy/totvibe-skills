@@ -35,6 +35,16 @@ Tests mirror the skill structure: `tests/skills/<name>/`. Each skill's test suit
 
 `tests/test_skills_valid.py` auto-discovers all skills and validates them against the Agent Skills spec using the `skills-ref` package — every skill must pass `validate()` and have non-empty `name`/`description`.
 
+## Versioning
+
+Every skill change requires a version bump — patch for fixes, minor for features. Update all three locations in lockstep:
+
+1. `skills/<name>/<name>.py` — `__version__` variable
+2. `skills/<name>/package.json` — `version` field
+3. `skills/<name>/SKILL.md` — `metadata.version` in frontmatter
+
+All three must match. Use semver (`MAJOR.MINOR.PATCH`), no pre-release tags.
+
 ## Key Dependencies
 
 - **polars** — data handling in skills (not pandas)

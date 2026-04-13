@@ -6,9 +6,9 @@ description: >
   Use this whenever you need article content as markdown — blog posts, docs, release notes, changelogs.
   Never manually fetch+parse HTML or use WebFetch for article extraction when h2md is available.
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
   user-invocable: "true"
-  argument-hint: <url> [--no-assets] [--selector SEL]
+  argument-hint: <url> [--no-assets] [--selector SEL] [--copy-to PATH]
 ---
 
 # h2md -- article-to-markdown converter
@@ -25,6 +25,7 @@ content through a small summarizer model and loses code blocks, exact wording, a
 h2md <url>                                # convert article, workspace in /tmp/h2md_*/
 h2md <url> --no-assets                    # skip image download
 h2md <url> --selector "div.post-body"     # CSS selector override for extraction
+h2md <url> --copy-to ./article.md         # copy final article.md to a local path
 ```
 
 ## Options
@@ -34,6 +35,7 @@ h2md <url> --selector "div.post-body"     # CSS selector override for extraction
 | `--no-assets` | off | Skip image download |
 | `--js` | off | JS rendering (requires playwright) |
 | `--selector SEL` | auto-detect | CSS selector for extraction |
+| `--copy-to PATH` | none | Copy final article.md to this path |
 
 ## Workspace layout
 
@@ -50,6 +52,7 @@ Each run creates a fresh temporary workspace in `/tmp/h2md_*/`:
   article.raw.md          # converter output (pre-normalization)
   article.prelint.md      # post-normalization, pre-rumdl
   article.md              # final output (post-rumdl) — edit this file
+  toc.toon                # section map: headings, line ranges, code block counts, issues
   lint.report.txt         # remaining rumdl violations after --fix
   notes.md                # known artifacts with exact-quote anchors
 ```
@@ -58,16 +61,21 @@ Each run creates a fresh temporary workspace in `/tmp/h2md_*/`:
 
 After `h2md` finishes, follow this workflow to polish the result:
 
-1. **Read `notes.md` first.** It lists known artifacts (fused text, empty blocks, HTML leakage)
-   keyed by exact substring anchors you can use with Edit.
-2. **Edit `article.md`** to fix issues. Use Edit, not Write — preserve the deterministic
-   conversion as the base.
-3. **Cross-reference `article.html`** when a passage looks wrong. The extracted HTML is the
+1. **Read `toc.toon` first.** The section map shows every heading with its line range,
+   word count, code block count, and issue count. Use it to decide which sections need
+   attention and skip clean sections entirely. Use line ranges for targeted
+   `Read(offset=, limit=)` calls instead of reading the full article.
+2. **Read `notes.md`.** It lists known artifacts (fused text, wrong language, HTML leakage)
+   keyed by exact substring anchors or line numbers you can use with Edit.
+3. **Edit `article.md`** to fix issues. Use Edit, not Write — preserve the deterministic
+   conversion as the base. If issues > 10, suspect a systematic problem amenable to a
+   batch fix script rather than individual edits.
+4. **Cross-reference `article.html`** when a passage looks wrong. The extracted HTML is the
    source of truth for wording. Grep it to verify whether text was dropped or garbled.
-4. **Do not paraphrase.** Priority is wording fidelity over layout fidelity. Content must
+5. **Do not paraphrase.** Priority is wording fidelity over layout fidelity. Content must
    match the source exactly. Allowed edits: fix converter artifacts, restructure headings,
    correct code fence languages, apply lint fixes.
-5. **Run `rumdl check article.md`** after editing to verify no new violations.
+6. **Run `rumdl check article.md`** after editing to verify no new violations.
 
 ## Output
 
@@ -79,5 +87,14 @@ h2md:
   words: 3245
   issues: 2
   lint_remaining: 0
-next: Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity.
+toc:
+  total_sections: 12
+  total_code_blocks: 18
+  code_languages:
+    javascript: 10
+    bash: 5
+    json: 3
+  total_issues: 2
+  sections_with_issues: 2
+next: Read toc.toon for section map. Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity.
 ```

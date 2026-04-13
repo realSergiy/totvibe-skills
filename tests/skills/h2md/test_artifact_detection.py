@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_fused_text_detected(pipeline):
-    fused = "a" * 60
+    fused = "a" * 90
     html = f"""<!DOCTYPE html><html><body><article>
     <h1>Title</h1>
     <p>Some text {fused} more text in this article paragraph.</p>
@@ -35,8 +35,28 @@ def test_url_in_markdown_link_not_flagged_as_fused(pipeline):
     assert "fused text" not in r.notes.lower()
 
 
+def test_medium_string_not_flagged_as_fused(pipeline):
+    medium = "a" * 60
+    html = f"""<!DOCTYPE html><html><body><article>
+    <h1>Title</h1>
+    <p>Some text {medium} more text in this article paragraph.</p>
+    </article></body></html>"""
+    r = pipeline(html)
+    assert "fused text" not in r.notes.lower()
+
+
+def test_wrong_language_detection_on_text_tagged_fence(h2md, tmp_path):
+    md = '---\n---\n\n# Title\n\nSome text.\n\n```text\nconst app = express()\napp.listen(3000)\n```\n'
+    (tmp_path / "article.md").write_text(md)
+    (tmp_path / "notes.md").write_text("")
+    h2md._detect(tmp_path)
+    notes = (tmp_path / "notes.md").read_text()
+    assert "## Likely wrong language" in notes
+    assert "javascript" in notes.lower()
+
+
 def test_long_string_inside_code_fence_not_flagged(pipeline):
-    long_import = "a" * 60
+    long_import = "a" * 90
     html = f"""<!DOCTYPE html><html><body><article>
     <h1>Title</h1>
     <p>Some text.</p>
@@ -47,7 +67,7 @@ def test_long_string_inside_code_fence_not_flagged(pipeline):
 
 
 def test_inline_code_not_flagged_as_fused(pipeline):
-    long_id = "x" * 60
+    long_id = "x" * 90
     html = f"""<!DOCTYPE html><html><body><article>
     <h1>Title</h1>
     <p>Run <code>{long_id}</code> to start the process.</p>
@@ -69,7 +89,7 @@ def test_multiple_links_zero_false_positives(pipeline):
 
 
 def test_issues_use_substring_anchors(pipeline):
-    fused = "x" * 60
+    fused = "x" * 90
     html = f"""<!DOCTYPE html><html><body><article>
     <h1>Title</h1>
     <p>Before the problem {fused} after it in the text.</p>

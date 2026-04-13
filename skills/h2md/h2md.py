@@ -32,7 +32,7 @@ from bs4.element import NavigableString
 from markdownify import MarkdownConverter
 from toon_format import encode
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 app = typer.Typer()
 
@@ -85,6 +85,16 @@ def _build_flat_tabs(soup: BeautifulSoup, labels: list[str], panels: Sequence[Ta
 # Stage 2: Extract (structural preprocessing + article extraction + metadata)
 # ---------------------------------------------------------------------------
 
+def _extract_line_span_text(line_span: Tag) -> str:
+    parts: list[str] = []
+    for child in line_span.children:
+        if isinstance(child, Tag):
+            parts.append(child.get_text())
+        elif isinstance(child, NavigableString) and not child.isspace():
+            parts.append(str(child))
+    return "".join(parts)
+
+
 def _collapse_code_spans(soup: BeautifulSoup) -> None:
     for pre in soup.find_all("pre"):
         code = pre.find("code")
@@ -92,8 +102,12 @@ def _collapse_code_spans(soup: BeautifulSoup) -> None:
             continue
         if not code.find("span"):
             continue
-        text = code.get_text()
         lang_classes = [c for c in _classes_from_tag(code) if c.startswith(("language-", "lang-", "highlight-"))]
+        line_spans = code.find_all("span", class_="line")
+        if line_spans:
+            text = "\n".join(_extract_line_span_text(ls) for ls in line_spans)
+        else:
+            text = code.get_text()
         code.clear()
         code.string = text
         if lang_classes:
@@ -143,9 +157,9 @@ def _flatten_tablists(soup: BeautifulSoup) -> None:
                 panel.decompose()
 
 
-_TAB_CONTAINER_CLS = {"codetabs", "tabs", "code-tabs", "tabbed-content", "code-group"}
-_TAB_BUTTON_CLS = {"codeblocktab", "tabs__item", "tab-button", "tab", "code-group-tab"}
-_TAB_PANEL_CLS = {"codeblockcontent", "tabitem", "tab-panel", "tab-content", "tab-pane", "code-group-panel"}
+_TAB_CONTAINER_CLS = {"codetabs", "tabs", "code-tabs", "tabbed-content", "code-group", "tabbed-set"}
+_TAB_BUTTON_CLS = {"codeblocktab", "tabs__item", "tab-button", "tab", "code-group-tab", "codetab", "tabbed-set--tab"}
+_TAB_PANEL_CLS = {"codeblockcontent", "tabitem", "tab-panel", "tab-content", "tab-pane", "code-group-panel", "codetabitem", "codetabcontent", "tabbed-block"}
 
 
 def _has_any_class(tag: Tag, class_set: set[str]) -> bool:
@@ -221,6 +235,16 @@ def _clean_code_containers(soup: BeautifulSoup) -> None:
                 sibling.decompose()
 
 
+_COPY_CLS = {"copy", "copyicon", "copy-icon", "copy-button", "clipboard", "clipboard-copy", "copy-code"}
+
+
+def _strip_copy_elements(soup: BeautifulSoup) -> None:
+    for pre in soup.find_all("pre"):
+        container = pre.parent if pre.parent and isinstance(pre.parent, Tag) else pre
+        for el in container.find_all(lambda t: isinstance(t, Tag) and _has_any_class(t, _COPY_CLS)):
+            el.decompose()
+
+
 def _preprocess_dom(soup: BeautifulSoup) -> BeautifulSoup:
     _flatten_tablists(soup)
     _flatten_class_tabs(soup)
@@ -234,6 +258,7 @@ def _preprocess_dom(soup: BeautifulSoup) -> BeautifulSoup:
         if isinstance(tag, Tag):
             tag.decompose()
 
+    _strip_copy_elements(soup)
     _clean_code_containers(soup)
     _collapse_code_spans(soup)
     _insert_span_whitespace(soup)
@@ -405,7 +430,8 @@ LANG_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"<[A-Z][a-zA-Z]*[\s/>]"), "tsx"),
     (re.compile(r"^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b", re.MULTILINE | re.IGNORECASE), "sql"),
     (re.compile(r":\s*(string|number|boolean|void|any)\b|^interface\s|^type\s+\w+\s*=", re.MULTILINE), "typescript"),
-    (re.compile(r"^(def |class |import |from \w+ import )", re.MULTILINE), "python"),
+    (re.compile(r"^import\s.+\sfrom\s+['\"]|^export\s+(default\s+)?(function|class|const|let|var|async)\s", re.MULTILINE), "javascript"),
+    (re.compile(r"^(def \w+\(|class \w+[:(]|from \w+ import )", re.MULTILINE), "python"),
     (re.compile(r"(function\s|const\s|let\s|=>|module\.exports)"), "javascript"),
     (re.compile(r"^(html|body|div|span|\.|#|@media)\s*\{", re.MULTILINE), "css"),
 ]
@@ -522,18 +548,20 @@ def _convert(workspace: Path) -> None:
 _BOLD_HEADING_RE = re.compile(r"^\*\*([A-Z][^*]{3,80})\*\*$")
 _EMPTY_FENCE_RE = re.compile(r"```[a-z]*\n\s*\n?```", re.MULTILINE)
 
-_FUSED_RE = re.compile(r"\S{50,}")
+_FUSED_RE = re.compile(r"\S{80,}")
 _HTML_LEAK_RE = re.compile(r"<(svg|button|input|form)\b|role=[\"']")
 _EMPTY_BLOCK_RE = re.compile(r"```[a-z]*\n\s*\n?```")
 _TAB_LABEL_RE = re.compile(r"^[a-z]{2,15}$", re.IGNORECASE)
 _FENCE_RE = re.compile(r"^```[^\n]*\n.*?^```", re.MULTILINE | re.DOTALL)
+_FENCE_LANG_RE = re.compile(r"^```(\w*)\n(.*?)^```", re.MULTILINE | re.DOTALL)
 _MD_LINK_URL_RE = re.compile(r"\]\([^\)]+\)")
 _INLINE_CODE_RE = re.compile(r"`[^`]+`")
+_FRONTMATTER_RE = re.compile(r"\A---\n.*?^---", re.MULTILINE | re.DOTALL)
 
 
 def _exclusion_zones(md: str) -> list[tuple[int, int]]:
     zones: list[tuple[int, int]] = []
-    for pattern in (_FENCE_RE, _MD_LINK_URL_RE, _INLINE_CODE_RE):
+    for pattern in (_FENCE_RE, _MD_LINK_URL_RE, _INLINE_CODE_RE, _FRONTMATTER_RE):
         for m in pattern.finditer(md):
             zones.append((m.start(), m.end()))
     zones.sort()
@@ -636,6 +664,18 @@ def _detect(workspace: Path) -> None:
         ctx = _context_around(md, m.start(), m.end(), 20)
         issues.append(f"## Empty code block\n**Find:** `{ctx}`\n**Suggested fix:** remove empty fence\n")
 
+    for m in _FENCE_LANG_RE.finditer(md):
+        lang = m.group(1)
+        if lang and lang != "text":
+            continue
+        content = m.group(2).strip()
+        if not content or len(content) < 8:
+            continue
+        sniffed = _sniff_language(content)
+        if sniffed != "text":
+            line_num = md[:m.start()].count("\n") + 1
+            issues.append(f"## Likely wrong language\n**Line:** {line_num}\n**Detected:** `{sniffed}`\n**Suggested fix:** change fence to ```{sniffed}\n")
+
     lines = md.split("\n")
     for i, line in enumerate(lines[:-1]):
         if _TAB_LABEL_RE.match(line.strip()) and i + 1 < len(lines) and lines[i + 1].strip().startswith("```"):
@@ -646,10 +686,85 @@ def _detect(workspace: Path) -> None:
     (workspace / "notes.md").write_text(notes)
 
 
+def _build_toc(workspace: Path) -> dict:
+    article = workspace / "article.md"
+    if not article.exists():
+        return {"sections": [], "summary": {}}
+    md = article.read_text()
+    lines = md.split("\n")
+
+    sections: list[dict] = []
+    for i, line in enumerate(lines):
+        m = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if m:
+            sections.append({"level": len(m.group(1)), "title": m.group(2).strip(), "line": i + 1})
+
+    fence_lines: list[tuple[int, str]] = []
+    in_fence = False
+    for i, line in enumerate(lines):
+        if line.startswith("```"):
+            if not in_fence:
+                in_fence = True
+                fence_lines.append((i + 1, line[3:].strip() or "text"))
+            else:
+                in_fence = False
+
+    notes_path = workspace / "notes.md"
+    notes_text = notes_path.read_text() if notes_path.exists() else ""
+    issue_positions: list[int] = [int(m.group(1)) for m in re.finditer(r"\*\*Line:\*\*\s*(\d+)", notes_text)]
+    find_issues = notes_text.count("## ") if notes_text.strip() else 0
+    unlocated_issues = find_issues - len(issue_positions)
+
+    total_code = len(fence_lines)
+    total_issues = find_issues
+    sections_with_issues = 0
+    lang_counts: dict[str, int] = {}
+
+    for idx, sec in enumerate(sections):
+        start = sec["line"]
+        end = sections[idx + 1]["line"] - 1 if idx + 1 < len(sections) else len(lines)
+
+        word_parts: list[str] = []
+        in_f = False
+        for i in range(start, min(end, len(lines))):
+            ln = lines[i]
+            if ln.startswith("```"):
+                in_f = not in_f
+                continue
+            if not in_f:
+                word_parts.append(ln)
+        sec["words"] = len(" ".join(word_parts).split())
+
+        sec_fences = [(fl, lang) for fl, lang in fence_lines if start <= fl <= end]
+        sec["code_blocks"] = len(sec_fences)
+        for _, lang in sec_fences:
+            lang_counts[lang] = lang_counts.get(lang, 0) + 1
+
+        sec["issues"] = sum(1 for il in issue_positions if start <= il <= end)
+        if sec["issues"]:
+            sections_with_issues += 1
+
+    toc_data = {
+        "sections": sections,
+        "summary": {
+            "total_sections": len(sections),
+            "total_code_blocks": total_code,
+            "code_languages": lang_counts,
+            "total_issues": total_issues,
+            "sections_with_issues": sections_with_issues,
+        },
+    }
+    if unlocated_issues > 0:
+        toc_data["summary"]["unlocated_issues"] = unlocated_issues
+    (workspace / "toc.toon").write_text(encode(toc_data) + "\n")
+    return toc_data
+
+
 def _postprocess(workspace: Path) -> None:
     _normalize(workspace)
     _lint(workspace)
     _detect(workspace)
+    _build_toc(workspace)
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +781,16 @@ def _handoff(workspace: Path, url: str) -> None:
     lint_text = lint_path.read_text() if lint_path.exists() else ""
     lint_remaining = len([ln for ln in lint_text.strip().split("\n") if ln.strip() and "not found" not in ln.lower()])
 
+    toc_path = workspace / "toc.toon"
+    toc_summary: dict = {}
+    if toc_path.exists():
+        from toon_format import decode
+        toc_raw = decode(toc_path.read_text())
+        if isinstance(toc_raw, dict):
+            summary = toc_raw.get("summary")
+            if isinstance(summary, dict):
+                toc_summary = summary
+
     output = {
         "h2md": {
             "url": url,
@@ -675,7 +800,8 @@ def _handoff(workspace: Path, url: str) -> None:
             "issues": issue_count,
             "lint_remaining": lint_remaining,
         },
-        "next": "Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity.",
+        "toc": toc_summary,
+        "next": "Read toc.toon for section map. Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity.",
     }
     print(encode(output))
 
@@ -696,6 +822,7 @@ def main(
     no_assets: Annotated[bool, typer.Option("--no-assets", help="Skip image download")] = False,
     js: Annotated[bool, typer.Option("--js", help="JS rendering (requires playwright)")] = False,
     selector: Annotated[str | None, typer.Option("--selector", help="CSS selector for extraction")] = None,
+    copy_to: Annotated[str | None, typer.Option("--copy-to", help="Copy article.md to this path")] = None,
     version: Annotated[bool | None, typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version")] = None,
 ) -> None:
     """Convert a web article to clean, faithful markdown."""
@@ -718,6 +845,9 @@ def main(
         except Exception as exc:
             typer.echo(f"Stage '{name}' failed: {exc}", err=True)
             raise typer.Exit(1)
+
+    if copy_to:
+        shutil.copy2(workspace / "article.md", copy_to)
 
     _handoff(workspace, url)
 

@@ -34,3 +34,21 @@ def test_nav_wrapper_tabs_flattened(pipeline):
     r = pipeline(html)
     assert 'print("hi")' in r.md
     assert 'puts "hi"' in r.md
+
+
+def test_codetab_class_pattern_flattened(pipeline):
+    html = """<!DOCTYPE html><html><body><article>
+    <h1>Install</h1>
+    <p>Pick a method:</p>
+    <div class="CodeTabs">
+        <div class="CodeTabsHeader">
+            <div class="CodeTab active">curl</div>
+            <div class="CodeTab">npm</div>
+        </div>
+        <div class="CodeTabItem active"><pre><code>curl -fsSL https://example.com</code></pre></div>
+        <div class="CodeTabItem"><pre><code>npm install example</code></pre></div>
+    </div>
+    </article></body></html>"""
+    r = pipeline(html)
+    assert "curl -fsSL" in r.md
+    assert "npm install" in r.md

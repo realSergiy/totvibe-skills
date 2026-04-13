@@ -50,6 +50,12 @@ def test_shiki_spans_produce_clean_code(pipeline, read_fixture):
     assert "<span" not in r.md
 
 
+def test_shiki_interspan_whitespace_stripped(pipeline, read_fixture):
+    r = pipeline(read_fixture("shiki_whitespace.html"))
+    assert 'import homepage from "./index.html";' in r.md
+    assert "const app = express();" in r.md
+
+
 def test_code_chrome_removed(pipeline):
     html = """<!DOCTYPE html><html><body><article>
     <h1>Code Example</h1>
@@ -68,6 +74,25 @@ def test_code_chrome_removed(pipeline):
     r = pipeline(html)
     assert 'print("hello world")' in r.md
     assert "npm start" in r.md
+
+
+def test_copy_button_elements_stripped(pipeline):
+    html = """<!DOCTYPE html><html><body><article>
+    <h1>Code Examples With Copy Buttons</h1>
+    <p>Here is some Python code with a copy icon overlay that should be stripped from the output entirely:</p>
+    <div class="code-wrapper">
+        <div class="CopyIcon">Copy</div>
+        <pre><code class="language-python">print("hello")</code></pre>
+    </div>
+    <p>And another example with a clipboard copy button that should also be removed:</p>
+    <div class="highlight">
+        <div class="clipboard-copy">Copy to clipboard</div>
+        <pre><code class="language-bash">curl https://example.com</code></pre>
+    </div>
+    </article></body></html>"""
+    r = pipeline(html)
+    assert 'print("hello")' in r.md
+    assert "curl https://example.com" in r.md
 
 
 def test_data_language_attribute_detected(pipeline):

@@ -92,10 +92,13 @@ def pipeline(h2md, serve_html, decode):
         assert result.exit_code == 0, result.output
         d = decode(result.output)
         ws = Path(d["h2md"]["workspace"])
+        toc_path = ws / "toc.toon"
+        toc = _decode(toc_path.read_text()) if toc_path.exists() else {}
         return SimpleNamespace(
             md=(ws / "article.md").read_text(),
             meta=json.loads((ws / "meta.json").read_text()),
             notes=(ws / "notes.md").read_text(),
+            toc=toc,
             toon=d,
             workspace=ws,
         )
