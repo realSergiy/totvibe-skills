@@ -6,9 +6,9 @@ description: >
   Use this whenever you need article content as markdown — blog posts, docs, release notes, changelogs.
   Never manually fetch+parse HTML or use WebFetch for article extraction when h2md is available.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
   user-invocable: "true"
-  argument-hint: <url> [--out DIR] [--force] [--no-assets] [--selector SEL]
+  argument-hint: <url> [--no-assets] [--selector SEL]
 ---
 
 # h2md -- article-to-markdown converter
@@ -22,9 +22,7 @@ content through a small summarizer model and loses code blocks, exact wording, a
 ## Usage
 
 ```text
-h2md <url>                                # default workspace in ~/.cache/h2md/<slug>/
-h2md <url> --out ./articles/post          # custom workspace location
-h2md <url> --force                        # re-run all stages (ignore cache)
+h2md <url>                                # convert article, workspace in /tmp/h2md_*/
 h2md <url> --no-assets                    # skip image download
 h2md <url> --selector "div.post-body"     # CSS selector override for extraction
 h2md <url> --lint "markdownlint --fix"    # override lint command (default: rumdl check --fix)
@@ -34,8 +32,6 @@ h2md <url> --lint "markdownlint --fix"    # override lint command (default: rumd
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--out DIR` | `~/.cache/h2md/<slug>/` | Workspace directory |
-| `--force` | off | Re-run all stages, ignore cache |
 | `--no-assets` | off | Skip image download |
 | `--js` | off | JS rendering (requires playwright) |
 | `--lint CMD` | `rumdl check --fix` | Lint command |
@@ -43,7 +39,7 @@ h2md <url> --lint "markdownlint --fix"    # override lint command (default: rumd
 
 ## Workspace layout
 
-After running, the workspace contains:
+Each run creates a fresh temporary workspace in `/tmp/h2md_*/`:
 
 ```text
 <workspace>/
@@ -58,7 +54,6 @@ After running, the workspace contains:
   article.md              # final output (post-rumdl) — edit this file
   lint.report.txt         # remaining rumdl violations after --fix
   notes.md                # known artifacts with exact-quote anchors
-  h2md.json                # manifest: stages completed, timings, checksums
 ```
 
 ## Agent workflow
@@ -71,22 +66,20 @@ After `h2md` finishes, follow this workflow to polish the result:
    conversion as the base.
 3. **Cross-reference `article.html`** when a passage looks wrong. The extracted HTML is the
    source of truth for wording. Grep it to verify whether text was dropped or garbled.
-4. **Do not re-download.** If `raw.html` exists, the content is cached. Re-run with `--force`
-   only if the page has genuinely changed.
-5. **Do not paraphrase.** Priority is wording fidelity over layout fidelity. Content must
+4. **Do not paraphrase.** Priority is wording fidelity over layout fidelity. Content must
    match the source exactly. Allowed edits: fix converter artifacts, restructure headings,
    correct code fence languages, apply lint fixes.
-6. **Run `rumdl check article.md`** after editing to verify no new violations.
+5. **Run `rumdl check article.md`** after editing to verify no new violations.
 
 ## Output
 
 ```text
 h2md:
   url: https://example.com/blog/post
-  workspace: /home/user/.cache/h2md/example_com_blog_post
+  workspace: /tmp/h2md_a1b2c3d4
   article: article.md
   words: 3245
   issues: 2
   lint_remaining: 0
-next: Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity. Do not re-download.
+next: Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity.
 ```

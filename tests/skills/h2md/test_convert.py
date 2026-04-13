@@ -34,8 +34,7 @@ def test_sniff_language_default_text(h2md):
 def test_convert_preserves_code_language_from_class(h2md, workspace):
     html = '<pre><code class="language-python">print("hi")</code></pre>'
     (workspace / "article.html").write_text(html)
-    manifest = h2md.Manifest(url="https://example.com")
-    h2md._convert(workspace, manifest, force=True)
+    h2md._convert(workspace)
     md = (workspace / "article.raw.md").read_text()
     assert "```python" in md
     assert 'print("hi")' in md
@@ -44,8 +43,7 @@ def test_convert_preserves_code_language_from_class(h2md, workspace):
 def test_convert_sniffs_language_when_no_class(h2md, workspace):
     html = '<pre><code>curl -fsSL https://example.com/install.sh | bash</code></pre>'
     (workspace / "article.html").write_text(html)
-    manifest = h2md.Manifest(url="https://example.com")
-    h2md._convert(workspace, manifest, force=True)
+    h2md._convert(workspace)
     md = (workspace / "article.raw.md").read_text()
     assert "```bash" in md
 
@@ -53,8 +51,7 @@ def test_convert_sniffs_language_when_no_class(h2md, workspace):
 def test_convert_headings_preserved(h2md, workspace):
     html = "<h1>Title</h1><h2>Section</h2><p>Content</p>"
     (workspace / "article.html").write_text(html)
-    manifest = h2md.Manifest(url="https://example.com")
-    h2md._convert(workspace, manifest, force=True)
+    h2md._convert(workspace)
     md = (workspace / "article.raw.md").read_text()
     assert "# Title" in md
     assert "## Section" in md
@@ -63,7 +60,6 @@ def test_convert_headings_preserved(h2md, workspace):
 def test_convert_links_preserved(h2md, workspace):
     html = '<p>Visit <a href="https://example.com">our site</a> for more.</p>'
     (workspace / "article.html").write_text(html)
-    manifest = h2md.Manifest(url="https://example.com")
-    h2md._convert(workspace, manifest, force=True)
+    h2md._convert(workspace)
     md = (workspace / "article.raw.md").read_text()
     assert "[our site](https://example.com)" in md

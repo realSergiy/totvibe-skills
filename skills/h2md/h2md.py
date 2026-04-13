@@ -15,16 +15,14 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import shutil
 import subprocess
-import time
-from dataclasses import dataclass, field
+import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
 
@@ -36,85 +34,27 @@ from markdownify import MarkdownConverter
 from readability import Document
 from toon_format import encode
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 app = typer.Typer()
 
-DEFAULT_CACHE_DIR = Path.home() / ".cache" / "h2md"
 DEFAULT_LINT_CMD = "rumdl check --fix"
 USER_AGENT = "Mozilla/5.0 (compatible; h2md/0.1; +https://github.com/totvibe/skills)"
 
 STRIP_TAGS = {"script", "style", "button", "svg", "nav", "footer", "header", "noscript"}
 INLINE_TAGS = {"span", "a", "em", "strong", "b", "i", "code", "abbr", "time", "small", "sub", "sup"}
 
-STAGES = ["fetch", "extract", "metadata", "assets", "convert", "normalize", "lint", "detect"]
-
-
-@dataclass
-class Manifest:
-    url: str
-    stages_completed: list[str] = field(default_factory=list)
-    timings: dict[str, float] = field(default_factory=dict)
-    checksums: dict[str, str] = field(default_factory=dict)
-    version: str = __version__
-
-    def save(self, path: Path) -> None:
-        path.write_text(json.dumps({
-            "url": self.url,
-            "stages_completed": self.stages_completed,
-            "timings": self.timings,
-            "checksums": self.checksums,
-            "version": self.version,
-        }, indent=2) + "\n")
-
-    @classmethod
-    def load(cls, path: Path) -> Manifest:
-        data = json.loads(path.read_text())
-        return cls(
-            url=data["url"],
-            stages_completed=data.get("stages_completed", []),
-            timings=data.get("timings", {}),
-            checksums=data.get("checksums", {}),
-            version=data.get("version", __version__),
-        )
-
-    def stage_done(self, name: str) -> bool:
-        return name in self.stages_completed
-
-    def mark_done(self, name: str, elapsed: float, **checksums: str) -> None:
-        if name not in self.stages_completed:
-            self.stages_completed.append(name)
-        self.timings[name] = round(elapsed, 3)
-        self.checksums.update(checksums)
-
-
-def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def _url_to_slug(url: str) -> str:
-    parsed = urlparse(url)
-    host = parsed.netloc.replace("www.", "").replace(".", "_")
-    path = parsed.path.strip("/").replace("/", "_")
-    slug = f"{host}_{path}" if path else host
-    slug = re.sub(r"[^a-zA-Z0-9_-]", "_", slug)
-    return slug[:80]
-
 
 # ---------------------------------------------------------------------------
 # Stage 1: Fetch
 # ---------------------------------------------------------------------------
 
-def _fetch(workspace: Path, manifest: Manifest, url: str, force: bool) -> bool:
-    if not force and manifest.stage_done("fetch"):
-        return True
-    t0 = time.monotonic()
+def _fetch(workspace: Path, url: str) -> None:
     with httpx.Client(follow_redirects=True, timeout=30, headers={"User-Agent": USER_AGENT}) as client:
         resp = client.get(url)
         resp.raise_for_status()
-    raw_bytes = resp.content
     (workspace / "source.url").write_text(url + "\n")
-    (workspace / "raw.html").write_bytes(raw_bytes)
+    (workspace / "raw.html").write_bytes(resp.content)
     headers_data = {
         "status_code": resp.status_code,
         "final_url": str(resp.url),
@@ -122,9 +62,6 @@ def _fetch(workspace: Path, manifest: Manifest, url: str, force: bool) -> bool:
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
     (workspace / "raw.headers.json").write_text(json.dumps(headers_data, indent=2) + "\n")
-    elapsed = time.monotonic() - t0
-    manifest.mark_done("fetch", elapsed, raw_html=_sha256(raw_bytes))
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -353,18 +290,12 @@ def _extract_article(soup: BeautifulSoup, raw_html: str, selector: str | None) -
     return str(soup.body) if soup.body else str(soup)
 
 
-def _extract(workspace: Path, manifest: Manifest, force: bool, selector: str | None) -> bool:
-    if not force and manifest.stage_done("extract"):
-        return True
-    t0 = time.monotonic()
+def _extract(workspace: Path, selector: str | None) -> None:
     raw_html = (workspace / "raw.html").read_text(errors="replace")
     soup = BeautifulSoup(raw_html, "lxml")
     soup = _preprocess_dom(soup)
     article_html = _extract_article(soup, raw_html, selector)
     (workspace / "article.html").write_text(article_html)
-    elapsed = time.monotonic() - t0
-    manifest.mark_done("extract", elapsed, article_html=_sha256(article_html.encode()))
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -448,10 +379,7 @@ def _parse_html_meta(soup: BeautifulSoup) -> dict:
     return meta
 
 
-def _metadata(workspace: Path, manifest: Manifest, force: bool) -> bool:
-    if not force and manifest.stage_done("metadata"):
-        return True
-    t0 = time.monotonic()
+def _metadata(workspace: Path) -> None:
     raw_html = (workspace / "raw.html").read_text(errors="replace")
     soup = BeautifulSoup(raw_html, "lxml")
 
@@ -467,30 +395,21 @@ def _metadata(workspace: Path, manifest: Manifest, force: bool) -> bool:
     meta["reading_time_minutes"] = max(1, round(words / 250))
 
     (workspace / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
-    elapsed = time.monotonic() - t0
-    manifest.mark_done("metadata", elapsed)
-    return True
 
 
 # ---------------------------------------------------------------------------
 # Stage 4: Assets
 # ---------------------------------------------------------------------------
 
-def _assets(workspace: Path, manifest: Manifest, force: bool, no_assets: bool) -> bool:
+def _assets(workspace: Path, no_assets: bool) -> None:
     if no_assets:
-        if "assets" not in manifest.stages_completed:
-            manifest.mark_done("assets", 0.0)
-        return True
-    if not force and manifest.stage_done("assets"):
-        return True
-    t0 = time.monotonic()
+        return
     article_path = workspace / "article.html"
     html = article_path.read_text(errors="replace")
     soup = BeautifulSoup(html, "lxml")
     imgs = soup.find_all("img")
     if not imgs:
-        manifest.mark_done("assets", time.monotonic() - t0)
-        return True
+        return
 
     assets_dir = workspace / "assets"
     assets_dir.mkdir(exist_ok=True)
@@ -507,17 +426,13 @@ def _assets(workspace: Path, manifest: Manifest, force: bool, no_assets: bool) -
             except (httpx.HTTPError, httpx.InvalidURL):
                 continue
             ext = Path(urlparse(src).path).suffix or ".bin"
-            filename = _sha256(src.encode())[:12] + ext
+            filename = re.sub(r"[^a-zA-Z0-9]", "_", src)[-40:] + ext
             (assets_dir / filename).write_bytes(resp.content)
             img["src"] = f"assets/{filename}"
             downloaded += 1
 
     if downloaded:
         article_path.write_text(str(soup))
-
-    elapsed = time.monotonic() - t0
-    manifest.mark_done("assets", elapsed)
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -636,10 +551,7 @@ class H2mdConverter(MarkdownConverter):
     pass
 
 
-def _convert(workspace: Path, manifest: Manifest, force: bool) -> bool:
-    if not force and manifest.stage_done("convert"):
-        return True
-    t0 = time.monotonic()
+def _convert(workspace: Path) -> None:
     article_html = (workspace / "article.html").read_text(errors="replace")
     converter = H2mdConverter(
         heading_style="ATX",
@@ -652,9 +564,6 @@ def _convert(workspace: Path, manifest: Manifest, force: bool) -> bool:
     md = re.sub(r"\n{3,}", "\n\n", md)
     md = md.strip() + "\n"
     (workspace / "article.raw.md").write_text(md)
-    elapsed = time.monotonic() - t0
-    manifest.mark_done("convert", elapsed)
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -665,10 +574,7 @@ _BOLD_HEADING_RE = re.compile(r"^\*\*([A-Z][^*]{3,80})\*\*$")
 _EMPTY_FENCE_RE = re.compile(r"```[a-z]*\n\s*\n?```", re.MULTILINE)
 
 
-def _normalize(workspace: Path, manifest: Manifest, force: bool) -> bool:
-    if not force and manifest.stage_done("normalize"):
-        return True
-    t0 = time.monotonic()
+def _normalize(workspace: Path) -> None:
     md = (workspace / "article.raw.md").read_text()
     meta_path = workspace / "meta.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
@@ -707,19 +613,13 @@ def _normalize(workspace: Path, manifest: Manifest, force: bool) -> bool:
     md = frontmatter + "\n\n" + md.strip() + "\n"
 
     (workspace / "article.prelint.md").write_text(md)
-    elapsed = time.monotonic() - t0
-    manifest.mark_done("normalize", elapsed)
-    return True
 
 
 # ---------------------------------------------------------------------------
 # Stage 7: Lint
 # ---------------------------------------------------------------------------
 
-def _lint(workspace: Path, manifest: Manifest, force: bool, lint_cmd: str) -> bool:
-    if not force and manifest.stage_done("lint"):
-        return True
-    t0 = time.monotonic()
+def _lint(workspace: Path, lint_cmd: str) -> None:
     prelint = workspace / "article.prelint.md"
     article = workspace / "article.md"
     shutil.copy2(prelint, article)
@@ -729,18 +629,13 @@ def _lint(workspace: Path, manifest: Manifest, force: bool, lint_cmd: str) -> bo
 
     if not shutil.which(lint_exe):
         (workspace / "lint.report.txt").write_text(f"{lint_exe} not found on PATH, skipping lint\n")
-        manifest.mark_done("lint", time.monotonic() - t0)
-        return True
+        return
 
     subprocess.run([*lint_parts, str(article)], capture_output=True, text=True)
 
     check_cmd = [lint_exe, "check", str(article)]
     result = subprocess.run(check_cmd, capture_output=True, text=True)
     (workspace / "lint.report.txt").write_text(result.stdout + result.stderr)
-
-    elapsed = time.monotonic() - t0
-    manifest.mark_done("lint", elapsed)
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -780,14 +675,10 @@ def _context_around(text: str, start: int, end: int, ctx: int = 40) -> str:
     return text[s:e].replace("\n", "\\n")
 
 
-def _detect(workspace: Path, manifest: Manifest, force: bool) -> bool:
-    if not force and manifest.stage_done("detect"):
-        return True
-    t0 = time.monotonic()
+def _detect(workspace: Path) -> None:
     article = workspace / "article.md"
     if not article.exists():
-        manifest.mark_done("detect", time.monotonic() - t0)
-        return True
+        return
     md = article.read_text()
     issues: list[str] = []
     zones = _exclusion_zones(md)
@@ -814,16 +705,13 @@ def _detect(workspace: Path, manifest: Manifest, force: bool) -> bool:
 
     notes = "\n".join(issues) if issues else ""
     (workspace / "notes.md").write_text(notes)
-    elapsed = time.monotonic() - t0
-    manifest.mark_done("detect", elapsed)
-    return True
 
 
 # ---------------------------------------------------------------------------
 # Stage 9: Handoff
 # ---------------------------------------------------------------------------
 
-def _handoff(workspace: Path, manifest: Manifest, url: str) -> None:
+def _handoff(workspace: Path, url: str) -> None:
     meta_path = workspace / "meta.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
     notes_path = workspace / "notes.md"
@@ -842,7 +730,7 @@ def _handoff(workspace: Path, manifest: Manifest, url: str) -> None:
             "issues": issue_count,
             "lint_remaining": lint_remaining,
         },
-        "next": "Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity. Do not re-download.",
+        "next": "Read notes.md for known issues. Edit article.md to fix. Cross-reference article.html for fidelity.",
     }
     print(encode(output))
 
@@ -860,8 +748,6 @@ def _version_callback(value: bool) -> None:
 @app.command()
 def main(
     url: Annotated[str, typer.Argument(help="URL of the article to convert")],
-    out: Annotated[Path | None, typer.Option("--out", help="Workspace directory")] = None,
-    force: Annotated[bool, typer.Option("--force", help="Re-run all stages")] = False,
     no_assets: Annotated[bool, typer.Option("--no-assets", help="Skip image download")] = False,
     js: Annotated[bool, typer.Option("--js", help="JS rendering (requires playwright)")] = False,
     lint_cmd: Annotated[str, typer.Option("--lint", help="Lint command")] = DEFAULT_LINT_CMD,
@@ -872,39 +758,27 @@ def main(
     if js:
         raise typer.BadParameter("JS rendering requires playwright which is not installed")
 
-    workspace = out or (DEFAULT_CACHE_DIR / _url_to_slug(url))
-    workspace.mkdir(parents=True, exist_ok=True)
+    workspace = Path(tempfile.mkdtemp(prefix="h2md_"))
 
-    manifest_path = workspace / "h2md.json"
-    if manifest_path.exists() and not force:
-        manifest = Manifest.load(manifest_path)
-    else:
-        manifest = Manifest(url=url)
-
-    if force:
-        manifest.stages_completed.clear()
-
-    stage_fns: list[tuple[str, Callable[[], bool]]] = [
-        ("fetch", lambda: _fetch(workspace, manifest, url, force)),
-        ("extract", lambda: _extract(workspace, manifest, force, selector)),
-        ("metadata", lambda: _metadata(workspace, manifest, force)),
-        ("assets", lambda: _assets(workspace, manifest, force, no_assets)),
-        ("convert", lambda: _convert(workspace, manifest, force)),
-        ("normalize", lambda: _normalize(workspace, manifest, force)),
-        ("lint", lambda: _lint(workspace, manifest, force, lint_cmd)),
-        ("detect", lambda: _detect(workspace, manifest, force)),
+    stages: list[tuple[str, Callable[[], None]]] = [
+        ("fetch", lambda: _fetch(workspace, url)),
+        ("extract", lambda: _extract(workspace, selector)),
+        ("metadata", lambda: _metadata(workspace)),
+        ("assets", lambda: _assets(workspace, no_assets)),
+        ("convert", lambda: _convert(workspace)),
+        ("normalize", lambda: _normalize(workspace)),
+        ("lint", lambda: _lint(workspace, lint_cmd)),
+        ("detect", lambda: _detect(workspace)),
     ]
 
-    for name, fn in stage_fns:
+    for name, fn in stages:
         try:
             fn()
         except Exception as exc:
-            manifest.save(manifest_path)
             typer.echo(f"Stage '{name}' failed: {exc}", err=True)
             raise typer.Exit(1)
-        manifest.save(manifest_path)
 
-    _handoff(workspace, manifest, url)
+    _handoff(workspace, url)
 
 
 if __name__ == "__main__":

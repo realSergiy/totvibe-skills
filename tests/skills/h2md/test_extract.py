@@ -67,19 +67,16 @@ def test_reconstructs_terminal_regions(h2md, read_fixture):
 def test_extract_article_tag(h2md, read_fixture, workspace):
     html = read_fixture("simple_article.html")
     (workspace / "raw.html").write_text(html)
-    manifest = h2md.Manifest(url="https://example.com")
-    h2md._extract(workspace, manifest, force=True, selector=None)
+    h2md._extract(workspace, selector=None)
     article_html = (workspace / "article.html").read_text()
     assert "Getting Started with FastAPI" in article_html
     assert "pip install fastapi" in article_html
-    assert manifest.stage_done("extract")
 
 
 def test_extract_no_article_tag_uses_fallback(h2md, read_fixture, workspace):
     html = read_fixture("no_article_tag.html")
     (workspace / "raw.html").write_text(html)
-    manifest = h2md.Manifest(url="https://example.com")
-    h2md._extract(workspace, manifest, force=True, selector=None)
+    h2md._extract(workspace, selector=None)
     article_html = (workspace / "article.html").read_text()
     assert "Async Patterns" in article_html or "asynchronous" in article_html.lower()
 
@@ -87,8 +84,7 @@ def test_extract_no_article_tag_uses_fallback(h2md, read_fixture, workspace):
 def test_extract_with_selector(h2md, read_fixture, workspace):
     html = read_fixture("no_article_tag.html")
     (workspace / "raw.html").write_text(html)
-    manifest = h2md.Manifest(url="https://example.com")
-    h2md._extract(workspace, manifest, force=True, selector="div.post-body")
+    h2md._extract(workspace, selector="div.post-body")
     article_html = (workspace / "article.html").read_text()
     assert "Async Patterns" in article_html
     assert "Recent Posts" not in article_html

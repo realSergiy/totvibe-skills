@@ -12,8 +12,7 @@ class TestFusedTextExclusions:
         long_url = "https://github.com/microsoft/TypeScript/pull/62243/files/very-long-path"
         md = f"# Title\n\n[This change was provided]({long_url}) thanks to the work.\n"
         (workspace / "article.md").write_text(md)
-        manifest = h2md.Manifest(url="https://example.com")
-        h2md._detect(workspace, manifest, force=True)
+        h2md._detect(workspace)
         notes = (workspace / "notes.md").read_text()
         assert "fused text" not in notes.lower()
 
@@ -21,8 +20,7 @@ class TestFusedTextExclusions:
         long_import = "a" * 60
         md = f"# Title\n\nSome text.\n\n```python\nimport {long_import}\n```\n"
         (workspace / "article.md").write_text(md)
-        manifest = h2md.Manifest(url="https://example.com")
-        h2md._detect(workspace, manifest, force=True)
+        h2md._detect(workspace)
         notes = (workspace / "notes.md").read_text()
         assert "fused text" not in notes.lower()
 
@@ -30,8 +28,7 @@ class TestFusedTextExclusions:
         long_id = "x" * 60
         md = f"# Title\n\nRun `{long_id}` to start.\n"
         (workspace / "article.md").write_text(md)
-        manifest = h2md.Manifest(url="https://example.com")
-        h2md._detect(workspace, manifest, force=True)
+        h2md._detect(workspace)
         notes = (workspace / "notes.md").read_text()
         assert "fused text" not in notes.lower()
 
@@ -39,8 +36,7 @@ class TestFusedTextExclusions:
         fused = "abcdefghij" * 6
         md = f"# Title\n\nSome text {fused} more text.\n"
         (workspace / "article.md").write_text(md)
-        manifest = h2md.Manifest(url="https://example.com")
-        h2md._detect(workspace, manifest, force=True)
+        h2md._detect(workspace)
         notes = (workspace / "notes.md").read_text()
         assert "fused text" in notes.lower()
 
@@ -50,8 +46,7 @@ class TestFusedTextExclusions:
         )
         md = f"# Title\n\nMany links: {links}\n"
         (workspace / "article.md").write_text(md)
-        manifest = h2md.Manifest(url="https://example.com")
-        h2md._detect(workspace, manifest, force=True)
+        h2md._detect(workspace)
         notes = (workspace / "notes.md").read_text()
         assert "fused text" not in notes.lower()
 
@@ -116,9 +111,8 @@ class TestShikiSpanCollapsing:
     def test_full_shiki_fixture_converts_clean(self, h2md, read_fixture, workspace):
         html = read_fixture("shiki_code.html")
         (workspace / "raw.html").write_text(html)
-        manifest = h2md.Manifest(url="https://example.com")
-        h2md._extract(workspace, manifest, force=True, selector=None)
-        h2md._convert(workspace, manifest, force=True)
+        h2md._extract(workspace, selector=None)
+        h2md._convert(workspace)
         md = (workspace / "article.raw.md").read_text()
         assert "```javascript" in md
         assert "express()" in md or "express();" in md
