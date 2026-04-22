@@ -25,6 +25,12 @@ def skill_loader():
 
     def _load(name: str) -> ModuleType:
         path = SKILLS_DIR / name / f"{name}.py"
+        if not path.exists():
+            pytest.fail(
+                f"Skill '{name}' has no CLI module at {path.relative_to(SKILLS_DIR.parent)}. "
+                f"CLI tests expect a typer app in <skill>.py; prompt-only skills should be "
+                f"filtered out by the caller (e.g. via SKILL_NAMES that checks for the .py)."
+            )
         spec = importlib.util.spec_from_file_location(name, path)
         assert spec is not None and spec.loader is not None
         mod = importlib.util.module_from_spec(spec)

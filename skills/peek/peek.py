@@ -15,7 +15,7 @@ import duckdb
 import typer
 from toon_format import encode
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 app = typer.Typer()
 

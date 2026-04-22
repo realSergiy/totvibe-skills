@@ -1,7 +1,8 @@
-"""Common CLI tests for all skills.
+"""Common CLI tests for skills whose SKILL.md declares ``metadata.kind: cli``.
 
-Auto-discovers every skill and verifies shared CLI conventions:
---help, --version, and version consistency across all three locations.
+Prompt-only skills (kind == 'prompt', or omitted — prompt is the default) are
+ignored here; they don't have an executable to exercise. The kind ⇔ file-layout
+invariant is enforced by ``tests/test_skills_valid.py``.
 """
 
 from __future__ import annotations
@@ -11,9 +12,22 @@ import re
 from pathlib import Path
 
 import pytest
+from skills_ref import read_properties
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
-SKILL_NAMES = sorted(p.name for p in SKILLS_DIR.iterdir() if p.is_dir() and (p / "SKILL.md").exists())
+
+
+def _is_cli(skill_dir: Path) -> bool:
+    if not (skill_dir / "SKILL.md").exists():
+        return False
+    try:
+        props = read_properties(skill_dir)
+    except Exception:
+        return False
+    return (props.metadata or {}).get("kind", "prompt") == "cli"
+
+
+SKILL_NAMES = sorted(p.name for p in SKILLS_DIR.iterdir() if p.is_dir() and _is_cli(p))
 
 
 @pytest.fixture(params=[pytest.param(n, id=n) for n in SKILL_NAMES])

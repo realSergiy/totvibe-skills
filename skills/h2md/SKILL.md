@@ -6,7 +6,8 @@ description: >
   Use this whenever you need article content as markdown — blog posts, docs, release notes, changelogs.
   Never manually fetch+parse HTML or use WebFetch for article extraction when h2md is available.
 metadata:
-  version: "0.6.0"
+  kind: cli
+  version: "0.6.1"
   user-invocable: "true"
   argument-hint: <url> [--no-assets] [--selector SEL] [--copy-to PATH]
 ---

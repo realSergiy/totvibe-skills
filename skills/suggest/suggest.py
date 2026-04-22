@@ -16,7 +16,7 @@ from typing import Annotated
 import typer
 from toon_format import encode
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 app = typer.Typer()
 

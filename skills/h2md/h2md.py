@@ -32,7 +32,7 @@ from bs4.element import NavigableString
 from markdownify import MarkdownConverter
 from toon_format import decode, encode
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 app = typer.Typer()
 

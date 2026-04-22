@@ -5,7 +5,8 @@ description: >
   BLOCKING REQUIREMENT: When you write a workaround for a skill limitation (python one-liner, extra parsing, manual post-processing),
   you MUST submit a /suggest IMMEDIATELY — before continuing the task. Do not batch suggestions for later.
 metadata:
-  version: "0.3.0"
+  kind: cli
+  version: "0.3.1"
   user-invocable: "true"
   argument-hint: <skill-name> [<markdown-text> | -]
 ---

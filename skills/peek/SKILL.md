@@ -6,7 +6,8 @@ description: >
   Use when exploring datasets, checking column types, or previewing rows.
   Prefer this over writing python -c one-liners with polars/pandas — saves tokens and avoids boilerplate.
 metadata:
-  version: "0.7.0"
+  kind: cli
+  version: "0.7.1"
   user-invocable: "true"
   argument-hint: <path> [-c] [-d] [-u col] [-g col] [-q sql] [--cols a,b] [-n N] [-a] [-t]
 ---
