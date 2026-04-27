@@ -1,0 +1,113 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#   "typer>=0.15",
+# ]
+# ///
+"""pusher — push the current branch and either open a draft PR or finalize one.
+
+Default flow (no flags) pushes the current branch and opens a draft PR against
+`main`, or leaves an existing draft alone. Pass `--ready` (or `-r`) to mark the
+PR ready, wait for required checks to pass, and squash-merge.
+
+Only committed changes are pushed; staged-but-uncommitted changes stay local.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import typer
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+LEADING_H1_RE = re.compile(r"\A\s*#\s.*?(?:\n|\Z)")
+BLANK_RUN_RE = re.compile(r"\n{2,}")
+
+
+def _run(*args: str, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, cwd=REPO_ROOT, text=True, check=check, capture_output=capture)
+
+
+def _git(*args: str) -> str:
+    return _run("git", *args, capture=True).stdout.strip()
+
+
+def _gh(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    return _run("gh", *args, capture=capture, check=check)
+
+
+def _current_branch() -> str:
+    return _git("branch", "--show-current")
+
+
+def _pr_view() -> dict | None:
+    proc = _gh("pr", "view", "--json", "number,url,isDraft,state,body", check=False)
+    if proc.returncode != 0:
+        return None
+    return json.loads(proc.stdout)
+
+
+def _clean_body(body: str) -> str:
+    body = HTML_COMMENT_RE.sub("", body)
+    body = LEADING_H1_RE.sub("", body, count=1)
+    body = BLANK_RUN_RE.sub("\n", body)
+    return body.strip()
+
+
+def main(
+    ready: bool = typer.Option(False, "--ready", "-r", help="Mark PR ready, wait for checks, then squash-merge."),
+) -> None:
+    """Push the current branch and either open a draft PR or finalize one."""
+    branch = _current_branch()
+    if not branch:
+        typer.echo("not on any branch (detached HEAD?)", err=True)
+        raise typer.Exit(1)
+    if branch == "main":
+        typer.echo("refusing to run on main", err=True)
+        raise typer.Exit(1)
+
+    _run("git", "push", "-u", "origin", branch)
+
+    pr = _pr_view()
+    if pr is None:
+        draft_flag = [] if ready else ["--draft"]
+        _gh("pr", "create", "--base", "main", "--fill", *draft_flag, capture=False)
+        pr = _pr_view()
+        assert pr is not None, "PR creation succeeded but `gh pr view` failed"
+    elif ready:
+        original_body = pr.get("body") or ""
+        cleaned = _clean_body(original_body)
+        if cleaned != original_body.strip():
+            _gh("pr", "edit", str(pr["number"]), "--body", cleaned, capture=False)
+        if pr.get("isDraft"):
+            _gh("pr", "ready", check=False, capture=False)
+            pr = _pr_view() or pr
+
+    url = pr["url"]
+    number = pr["number"]
+    if not ready:
+        typer.echo(f"PR (draft): {url}")
+        return
+
+    typer.echo(f"PR: {url}")
+    typer.echo("waiting for checks…")
+    checks = _gh("pr", "checks", str(number), "--watch", "--fail-fast", check=False, capture=False)
+    if checks.returncode != 0:
+        typer.echo("checks failed; not merging.", err=True)
+        raise typer.Exit(checks.returncode)
+
+    _gh("pr", "merge", str(number), "--squash", "--delete-branch", capture=False)
+
+
+if __name__ == "__main__":
+    try:
+        typer.run(main)
+    except subprocess.CalledProcessError as exc:
+        sys.exit(exc.returncode)

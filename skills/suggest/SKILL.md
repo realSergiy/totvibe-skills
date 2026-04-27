@@ -6,7 +6,7 @@ description: >
   you MUST submit a /suggest IMMEDIATELY — before continuing the task. Do not batch suggestions for later.
 metadata:
   kind: cli
-  version: "0.3.1"
+  version: "0.4.0"
   user-invocable: "true"
   argument-hint: <skill-name> [<markdown-text> | -]
 ---
@@ -82,10 +82,10 @@ Cuts token usage ~5x for multi-file schema scans — the most common first step 
 
 ## Configuration
 
-Set the `SUGGEST_DIR` environment variable to change where suggestions are saved. Defaults to `~/Documents/skill-suggestions/`.
+Set the `SKILL_SUGGEST_DIR` environment variable to change where suggestions are saved. Defaults to `~/Documents/skill-suggestions/`. The installer (`just i suggest`) auto-configures this from [skills/suggest/env.toml](env.toml).
 
 ## Output
 
 ```text
-saved: $SUGGEST_DIR/peek/suggestion_20260403_141523_012345.md
+saved: $SKILL_SUGGEST_DIR/peek/suggestion_20260403_141523_012345.md
 ```

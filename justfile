@@ -4,53 +4,42 @@ sync:
 
 alias l := lint
 
-# Run linters (rumdl + ruff), pass --fix to auto-fix
+# Lint (rumdl + ruff), autofix by default; pass --no-fix to report only
 lint *args:
-    rumdl check {{args}}
-    uv run --group lint ruff check {{args}}
+    @uv run scripts/dev.py lint {{args}}
 
 alias tc := typecheck
 
-# Run typecheck (pyright), lints first
-typecheck *args: lint
-    uv run --group typecheck pyright {{args}}
+# Lint then typecheck (pyright), autofix by default; --no-fix to report only
+typecheck *args:
+    @uv run scripts/dev.py typecheck {{args}}
 
 alias t := test
 
-# Run tests (pytest), typechecks and lints first
-test *args: typecheck
-    uv run --group test pytest {{args}}
+# Lint + typecheck + test (pytest), autofix by default; --no-fix to report only
+test *args:
+    @uv run scripts/dev.py test {{args}}
 
 alias i := install
 
-# Install a skill globally (omit name to install all)
+# Install a skill globally (omit name to install all stale skills; FORCE=1 reinstalls all)
 install name="":
-    #!/usr/bin/env bash
-    if [ -z "{{name}}" ]; then
-        for skill in skills/*/SKILL.md; do
-            s="$(basename "$(dirname "$skill")")"
-            just install "$s"
-        done
-    else
-        npx skills add . -g --skill {{name}} -y
-        chmod +x "$HOME/.agents/skills/{{name}}/{{name}}.py"
-        test -f "$HOME/.agents/skills/{{name}}/package.json" && (cd "$HOME/.agents/skills/{{name}}" && npm link) || true
-        if [ "{{name}}" = "suggest" ]; then
-            suggest_dir="$(pwd)/plan/skill-suggestions"
-            mkdir -p "$HOME/.config/environment.d"
-            printf 'SUGGEST_DIR=%s\n' "$suggest_dir" > "$HOME/.config/environment.d/suggest.conf"
-            if ! grep -q '^export SUGGEST_DIR=' "$HOME/.bashrc" 2>/dev/null; then
-                printf '\nexport SUGGEST_DIR=%s\n' "$suggest_dir" >> "$HOME/.bashrc"
-            else
-                sed -i "s|^export SUGGEST_DIR=.*|export SUGGEST_DIR=$suggest_dir|" "$HOME/.bashrc"
-            fi
-            echo "SUGGEST_DIR set to $suggest_dir"
-        fi
-    fi
+    @uv run scripts/skillman.py install {{name}}
 
 alias u := uninstall
 
 # Uninstall a skill globally
 uninstall name:
-    test -f "$HOME/.agents/skills/{{name}}/package.json" && (cd "$HOME/.agents/skills/{{name}}" && npm unlink) || true
-    npx skills remove {{name}} -g -y
+    @uv run scripts/skillman.py uninstall {{name}}
+
+alias p := push
+
+# Push current branch; opens a draft PR or finalizes (-r merges after checks)
+push *flags:
+    @uv run scripts/pusher.py {{flags}}
+
+alias b := bump
+
+# Bump <skill>'s version (default --minor; -p/--patch, --major). Idempotent + higher-wins.
+bump *args:
+    @uv run scripts/release.py bump {{args}}

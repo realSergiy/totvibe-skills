@@ -10,16 +10,16 @@ def suggest(skill_loader):
 
 @pytest.fixture(autouse=True)
 def suggest_dir(suggest, tmp_path):
-    """Redirect SUGGEST_DIR to tmp_path for test isolation.
+    """Redirect SKILL_SUGGEST_DIR to tmp_path for test isolation.
 
-    In production, SUGGEST_DIR is configured via the SUGGEST_DIR env var
+    In production, the directory is configured via the SKILL_SUGGEST_DIR env var
     (defaulting to ~/Documents/skill-suggestions). Tests override the module
     attribute directly for simplicity.
     """
-    original = suggest.SUGGEST_DIR
-    suggest.SUGGEST_DIR = tmp_path
+    original = suggest.SKILL_SUGGEST_DIR
+    suggest.SKILL_SUGGEST_DIR = tmp_path
     yield tmp_path
-    suggest.SUGGEST_DIR = original
+    suggest.SKILL_SUGGEST_DIR = original
 
 
 @pytest.fixture

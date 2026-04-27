@@ -128,7 +128,7 @@ Given a change that renames a public CLI flag, breaking existing callers:
 feat(suggest)!: rename --dir flag to --out
 
 BREAKING CHANGE: `suggest --dir` is removed. Use `--out <path>` instead,
-or set the SUGGEST_DIR env var.
+or set the SKILL_SUGGEST_DIR env var.
 ````
 
 ## Notes

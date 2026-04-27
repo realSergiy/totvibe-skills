@@ -68,9 +68,9 @@ def test_markdown_content_preserved(invoke, suggest_dir):
 
 
 def test_suggest_dir_from_env(tmp_path, monkeypatch):
-    """SUGGEST_DIR env var overrides the default directory."""
+    """SKILL_SUGGEST_DIR env var overrides the default directory."""
     custom = tmp_path / "custom-suggestions"
-    monkeypatch.setenv("SUGGEST_DIR", str(custom))
+    monkeypatch.setenv("SKILL_SUGGEST_DIR", str(custom))
     spec = importlib.util.spec_from_file_location(
         "suggest_env",
         Path(__file__).resolve().parents[3] / "skills" / "suggest" / "suggest.py",
@@ -78,12 +78,12 @@ def test_suggest_dir_from_env(tmp_path, monkeypatch):
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert mod.SUGGEST_DIR == custom
+    assert mod.SKILL_SUGGEST_DIR == custom
 
 
 def test_suggest_dir_default_without_env(monkeypatch):
-    """Without SUGGEST_DIR env var, falls back to ~/Documents/skill-suggestions."""
-    monkeypatch.delenv("SUGGEST_DIR", raising=False)
+    """Without SKILL_SUGGEST_DIR env var, falls back to ~/Documents/skill-suggestions."""
+    monkeypatch.delenv("SKILL_SUGGEST_DIR", raising=False)
     spec = importlib.util.spec_from_file_location(
         "suggest_default",
         Path(__file__).resolve().parents[3] / "skills" / "suggest" / "suggest.py",
@@ -91,4 +91,4 @@ def test_suggest_dir_default_without_env(monkeypatch):
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert mod.SUGGEST_DIR == Path.home() / "Documents" / "skill-suggestions"
+    assert mod.SKILL_SUGGEST_DIR == Path.home() / "Documents" / "skill-suggestions"

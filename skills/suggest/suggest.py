@@ -16,7 +16,7 @@ from typing import Annotated
 import typer
 from toon_format import encode
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 app = typer.Typer()
 
@@ -27,12 +27,12 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit
 
 _DEFAULT_DIR = Path.home() / "Documents" / "skill-suggestions"
-SUGGEST_DIR = Path(os.environ["SUGGEST_DIR"]) if "SUGGEST_DIR" in os.environ else _DEFAULT_DIR
+SKILL_SUGGEST_DIR = Path(os.environ["SKILL_SUGGEST_DIR"]) if "SKILL_SUGGEST_DIR" in os.environ else _DEFAULT_DIR
 
 
 def _save(skill: str, text: str) -> Path:
     """Save suggestion markdown to timestamped file. Returns the path."""
-    skill_dir = SUGGEST_DIR / skill
+    skill_dir = SKILL_SUGGEST_DIR / skill
     skill_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     path = skill_dir / f"suggestion_{ts}.md"
