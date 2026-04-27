@@ -3,7 +3,7 @@ name: mermaid
 description: Generate Mermaid diagrams for markdown — flowcharts, sequence diagrams, state machines, ER diagrams, architectures, Gantt, Sankey, mindmaps, and 20+ other types. Use whenever the user asks to draw, sketch, visualize, diagram, chart, or graph anything that ends up in markdown (README, design doc, code comment, PR/issue, wiki) — even when 'mermaid' is not mentioned. Trigger on 'draw/show the flow/architecture/state/sequence/relationship', 'add a flowchart/sequence diagram', 'diagram how X works', 'graph the schema', or any time the user shows an existing mermaid block to extend or fix. Picking the right diagram type for the question matters more than syntax fluency — the skill carries a curated selection guide and per-type syntax references. Do NOT use for production charts from real data (matplotlib, plotly, d3), formal architecture-of-record modelling, or when the user wants a static image rather than markdown — Mermaid is for explanation that lives next to prose.
 metadata:
   kind: prompt
-  version: 0.1.0
+  version: 0.1.1
   mermaid-version: "11.14.0"
 ---
 
@@ -249,7 +249,7 @@ Distilled from the selection guide. Apply these when the table feels ambiguous.
 
 - **Hallucinated syntax.** Mermaid evolves quickly and small details (the exact arrow style, the keyword for a node shape, the way to embed markdown in labels) shift between versions. Read the syntax reference even when you think you know.
 - **Reserved words in node IDs.** `end` in lowercase breaks flowcharts. The letters `o` and `x` as the first character of a node id can be parsed as edge styles (`A---oB` becomes a circle edge). When in doubt, capitalize or wrap in quotes.
-- **Special characters in labels.** Parentheses, colons, square brackets in labels need to be wrapped in `"..."`. HTML entities (`#quot;`, `#35;`) work for the trickiest cases.
+- **Labels: special chars and length.** Wrap labels containing parentheses, colons, or square brackets in `"..."`. Use `<br/>` to force line breaks in long labels — *especially edge labels*, which renderers otherwise auto-wrap at unfortunate boundaries. HTML entities (`#quot;`, `#35;`) work for the trickiest characters.
 - **Overlong diagrams.** A flowchart with 40 nodes is a debugging session, not a diagram. Break it into a top-level overview plus zoomed-in subdiagrams.
 - **Auto-layout fights.** When `flowchart` or `architecture` produces a tangle, switch to `block` for hand-placed layout instead of fighting the layout engine with positional hacks.
 - **Beta diagram surprises.** A diagram that worked yesterday may emit a parse error after a Mermaid bump. Check the syntax reference for the current syntax and confirm the renderer's Mermaid version.
