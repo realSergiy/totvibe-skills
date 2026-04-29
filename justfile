@@ -1,24 +1,24 @@
-# Install all dependencies
+# Install all dependencies (upgrades to latest compatible versions)
 sync:
-    uv sync --all-groups
+    uv sync --all-groups --upgrade
 
 alias l := lint
 
 # Lint (rumdl + ruff), autofix by default; pass --no-fix to report only
 lint *args:
-    @uv run scripts/dev.py lint {{args}}
+    @uv run scripts/justfile_helper.py lint {{args}}
 
 alias tc := typecheck
 
 # Lint then typecheck (pyright), autofix by default; --no-fix to report only
 typecheck *args:
-    @uv run scripts/dev.py typecheck {{args}}
+    @uv run scripts/justfile_helper.py typecheck {{args}}
 
 alias t := test
 
 # Lint + typecheck + test (pytest), autofix by default; --no-fix to report only
 test *args:
-    @uv run scripts/dev.py test {{args}}
+    @uv run scripts/justfile_helper.py test {{args}}
 
 alias i := install
 

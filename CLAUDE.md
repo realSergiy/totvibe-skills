@@ -23,9 +23,9 @@ just p           # push branch + open draft PR (pass -r to mark ready, wait for 
 just b mermaid   # bump a skill's version (default minor; -p for patch, --major; idempotent + higher-wins)
 ```
 
-The `just t` chain is: lint → typecheck → test, **with autofix on lint by default** (since `just …` is local-only). Pass `--no-fix` to mirror CI's no-autofix behavior. Chain logic lives in [scripts/dev.py](scripts/dev.py); CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) calls the underlying tools directly without autofix.
+The `just t` chain is: lint → typecheck → test, **with autofix on lint by default** (since `just …` is local-only). Pass `--no-fix` to mirror CI's no-autofix behavior. Chain logic lives in [scripts/justfile_helper.py](scripts/justfile_helper.py); CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) calls the underlying tools directly without autofix.
 
-Install/uninstall logic lives in [scripts/skillman.py](scripts/skillman.py) — a single PEP 723 + typer CLI invoked by the one-line just recipes. Subcommands: `install [NAME]`, `uninstall NAME`, `list-stale`. Defaults to fetching skill content from `github:realSergiy/totvibe-skills` so installs reflect what's been merged on `main`. Pass `--source .` (or set `SKILLMAN_SOURCE=.`) to install from the local working tree when developing.
+Install/uninstall logic lives in [scripts/skillman.py](scripts/skillman.py) — a typer CLI invoked by the one-line just recipes. Subcommands: `install [NAME]`, `uninstall NAME`, `list-stale`. Defaults to fetching skill content from `github:realSergiy/totvibe-skills` so installs reflect what's been merged on `main`. Pass `--source .` (or set `SKILLMAN_SOURCE=.`) to install from the local working tree when developing.
 
 ### Per-skill environment variables
 

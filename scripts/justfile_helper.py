@@ -1,9 +1,4 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.14"
-# dependencies = ["typer>=0.15"]
-# ///
-"""dev — local wrappers around lint/typecheck/test that autofix by default.
+"""justfile_helper — local wrappers around lint/typecheck/test that autofix by default.
 
 CI calls the underlying tools directly (without autofix). These wrappers exist
 so local runs (`just l` / `just tc` / `just t`) auto-fix lint issues for you.

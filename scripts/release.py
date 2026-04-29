@@ -1,10 +1,3 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.14"
-# dependencies = [
-#   "typer>=0.15",
-# ]
-# ///
 """release — bump a skill's version with idempotent, higher-wins semantics.
 
 The bump is anchored to `origin/main`:
