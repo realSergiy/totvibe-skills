@@ -1,11 +1,3 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.14"
-# dependencies = [
-#   "typer>=0.15",
-#   "skills-ref>=0.1",
-# ]
-# ///
 """skillman — install, uninstall, and inspect totvibe skills.
 
 A skill may declare per-machine environment variables in `skills/<name>/env.toml`:

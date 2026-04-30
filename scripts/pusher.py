@@ -1,10 +1,3 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.14"
-# dependencies = [
-#   "typer>=0.15",
-# ]
-# ///
 """pusher — push the current branch and either open a draft PR or finalize one.
 
 Default flow (no flags) pushes the current branch and opens a draft PR against
