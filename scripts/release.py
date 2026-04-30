@@ -43,6 +43,11 @@ RANK: dict[str, int] = {"none": 0, "patch": 1, "minor": 2, "major": 3}
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 
+@app.callback()
+def _cli() -> None:
+    """Skill release tooling."""
+
+
 def read_skill_md_version(skill_dir: Path) -> str | None:
     text = (skill_dir / "SKILL.md").read_text()
     m = SKILL_MD_VERSION_READ_RE.search(text)

@@ -3,7 +3,7 @@ name: plan-storm
 description: Run an interactive brainstorming session that produces and continuously refines a `plan.md` for a new project, feature, or initiative. Each round writes/rewrites the plan, then asks up to three numbered, option-rich interactions (clarification, creative idea, or challenge) and reports a readiness percentage that may go up or down. Use this skill whenever the user invokes `/plan-storm`, says "let's brainstorm a plan / project / feature", wants help thinking through requirements before any code is written, presents a rough idea and asks for help shaping it, or wants to pressure-test an idea with options and challenges. Works for greenfield projects and for new features inside existing ones. Do NOT use this skill once a plan exists and the user is already implementing — use it only at the brainstorming / shaping stage.
 metadata:
   kind: prompt
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # plan-storm
@@ -155,16 +155,19 @@ This is the recommended skeleton. **Adapt it to the project** — drop sections 
 <Why this exists. Who feels the pain. What today's workaround is. Why now.>
 
 ## 3. Users & primary scenarios
+
 - Primary user: <role / persona, one line>
 - Key scenarios:
   - <Scenario 1: user does X to accomplish Y>
   - <Scenario 2: ...>
 
 ## 4. Goals
+
 - <Bullet, ideally measurable or at least observable>
 - ...
 
 ## 5. Non-goals (current scope)
+
 - <Things we explicitly will NOT do, with one-line reason if the temptation is real>
 
 ## 6. Constraints
@@ -183,6 +186,7 @@ This is the recommended skeleton. **Adapt it to the project** — drop sections 
 <Only load-bearing choices: language, runtime, key libraries, storage, deployment target. Each one tagged with status and a one-line "why this and not the obvious alternative".>
 
 ## 11. Roadmap
+
 - **v1 / walking skeleton:** <recap one line>
 - **v2:** <next layer of features, with the trigger: "after we see X working / after Y feedback">
 - **v3+:** <speculative; OK to be vague>
@@ -321,12 +325,14 @@ I captured what you said into a first draft: vision is "tell me which OSS projec
 
 ### Interaction 1 — Clarification: what counts as "usage"?
 This shapes the entire data-collection story.
+
 1. **Imports in your code** — scan repos you push to GitHub for `package.json`/`requirements.txt` deps. *Tradeoff:* misses tools you use without coding.
 2. **CLI invocations** — install a shell hook that logs commands you run. *Tradeoff:* invasive, only catches CLI tools.
 3. **Self-reported list you maintain** — you tell the tool what you depend on; it just helps allocate budget. *Tradeoff:* you do the thinking, tool just does the math.
 4. Write your own.
 
 ### Interaction 2 — Creative idea: how does it deliver the recommendation?
+
 1. **Monthly email** — list + suggested $ split, you click to sponsor. *Tradeoff:* requires email infra, GitHub OAuth.
 2. **CLI command `sponsor suggest`** — prints a ranked list, you act manually. *Tradeoff:* zero infra, requires you to remember to run it.
 3. **Dashboard** — web UI showing usage trends and sponsor history. *Tradeoff:* most work to build.
@@ -334,6 +340,7 @@ This shapes the entire data-collection story.
 
 ### Interaction 3 — Challenge: do you actually need a tool, or a 10-line script?
 You said "tool", but if usage is self-reported and the recommendation is just "split your budget proportionally", a `sponsor.sh` plus a text file might do everything. Worth ruling out before we plan a real product.
+
 1. **Yes, real tool** — I want polish, history, multiple machines.
 2. **No, script-grade is fine** — let's plan a 1-evening version.
 3. **Real tool eventually, but ship the script first** — script becomes the walking skeleton.

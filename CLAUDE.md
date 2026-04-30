@@ -15,6 +15,7 @@ just tc          # typecheck (pyright) — runs lint first
 just t           # test (pytest) — runs typecheck first, which runs lint first
 just t --no-fix    # same chain, no autofix (mirrors what CI does)
 just t tests/skills/peek/test_info.py::test_default_output  # run a single test
+just t -- -k expr  # forward dash-flagged args to pytest after `--`
 just i peek      # install a single skill globally (default source: github main)
 just i           # install every skill whose source version differs from the installed copy
 FORCE=1 just i   # force-reinstall every skill, ignoring version match
@@ -23,7 +24,7 @@ just p           # push branch + open draft PR (pass -r to mark ready, wait for 
 just b mermaid   # bump a skill's version (default minor; -p for patch, --major; idempotent + higher-wins)
 ```
 
-The `just t` chain is: lint → typecheck → test, **with autofix on lint by default** (since `just …` is local-only). Pass `--no-fix` to mirror CI's no-autofix behavior. Chain logic lives in [scripts/justfile_helper.py](scripts/justfile_helper.py); CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) calls the underlying tools directly without autofix.
+The `just t` chain is: lint → typecheck → test, **with autofix on lint by default** (since `just …` is local-only). Pass `--no-fix` to mirror CI's no-autofix behavior. The chain is expressed natively in the [justfile](justfile) using `[arg]` recipe attributes (requires `just` ≥ 1.46.0); CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) calls the underlying tools directly without autofix.
 
 Install/uninstall logic lives in [scripts/skillman.py](scripts/skillman.py) — a typer CLI invoked by the one-line just recipes. Subcommands: `install [NAME]`, `uninstall NAME`, `list-stale`. Defaults to fetching skill content from `github:realSergiy/totvibe-skills` so installs reflect what's been merged on `main`. Pass `--source .` (or set `SKILLMAN_SOURCE=.`) to install from the local working tree when developing.
 
@@ -71,13 +72,12 @@ Repo settings and `main` branch protection live declaratively in [.github/settin
 
 - Direct pushes to `main` blocked; PRs only (admins included — `enforce_admins: true`)
 - Squash merges only (merge / rebase disabled), linear history required, branch deleted on merge
-- Required status checks: `lint (rumdl)`, `lint (ruff)`, `typecheck (pyright)`, `test (pytest)`, `claude code review`
+- Required status checks: `ci` (single job: rumdl + ruff + pyright + pytest, run in sequence on a pre-synced env), `claude code review`
 - Code owner review required for paths in [.github/CODEOWNERS](.github/CODEOWNERS) (currently `/.github/`, owned by `@realSergiy`)
 
 Workflows:
 
-- [ci.yml](.github/workflows/ci.yml) — lint / typecheck / test on every PR and push to main.
-- [claude-review.yml](.github/workflows/claude-review.yml) — runs the official `code-review` plugin on non-draft PRs (required status check).
+- [ci.yml](.github/workflows/ci.yml) — two jobs: `ci` (lint / typecheck / test on every PR and push to main) and `claude code review` (runs the official `code-review` plugin on non-draft PRs only after `ci` passes via `needs: ci`).
 - [claude-pr-summary.yml](.github/workflows/claude-pr-summary.yml) — on every push to a draft PR, refreshes the title and body. Two independent opt-in markers in the body (`<!-- remove this line to stop claude updating the pr title -->` and `<!-- remove this line to stop claude updating the pr summary -->`) gate each part; remove a marker to opt out. Title is rewritten in Conventional Commits format on every push (re-evaluating type as the PR evolves). `pusher.py -r` strips all HTML comments before merge so markers don't leak into the squash commit.
 - [claude.yml](.github/workflows/claude.yml) — runs Claude when `@claude` is mentioned in a PR/issue comment, review, or issue body.
 
