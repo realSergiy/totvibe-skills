@@ -70,8 +70,20 @@ def main(
 
     pr = _pr_view()
     if pr is None:
+        template_path = REPO_ROOT / ".github" / "pull_request_template.md"
         draft_flag = [] if ready else ["--draft"]
-        _gh("pr", "create", "--base", "main", "--fill", *draft_flag, capture=False)
+        _gh(
+            "pr",
+            "create",
+            "--base",
+            "main",
+            "--title",
+            branch,
+            "--body-file",
+            str(template_path),
+            *draft_flag,
+            capture=False,
+        )
         pr = _pr_view()
         assert pr is not None, "PR creation succeeded but `gh pr view` failed"
     elif ready:
