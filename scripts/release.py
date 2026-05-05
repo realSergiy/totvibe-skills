@@ -1,10 +1,3 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.14"
-# dependencies = [
-#   "typer>=0.15",
-# ]
-# ///
 """release — bump a skill's version with idempotent, higher-wins semantics.
 
 The bump is anchored to `origin/main`:
@@ -48,6 +41,11 @@ DiffKind = Literal["none", "patch", "minor", "major"]
 RANK: dict[str, int] = {"none": 0, "patch": 1, "minor": 2, "major": 3}
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
+
+
+@app.callback()
+def _cli() -> None:
+    """Skill release tooling."""
 
 
 def read_skill_md_version(skill_dir: Path) -> str | None:

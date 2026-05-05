@@ -1,24 +1,29 @@
-# Install all dependencies
+# Install all dependencies (upgrades to latest compatible versions)
 sync:
-    uv sync --all-groups
+    uv sync --all-groups --upgrade
 
 alias l := lint
 
 # Lint (rumdl + ruff), autofix by default; pass --no-fix to report only
-lint *args:
-    @uv run scripts/dev.py lint {{args}}
+[arg('fix', long='no-fix', value='')]
+lint fix='--fix':
+    uv run --group lint rumdl check {{fix}}
+    uv run --group lint ruff check {{fix}}
 
 alias tc := typecheck
 
 # Lint then typecheck (pyright), autofix by default; --no-fix to report only
-typecheck *args:
-    @uv run scripts/dev.py typecheck {{args}}
+[arg('fix', long='no-fix', value='')]
+typecheck fix='--fix': (lint fix)
+    uv run --group typecheck pyright
 
 alias t := test
 
-# Lint + typecheck + test (pytest), autofix by default; --no-fix to report only
-test *args:
-    @uv run scripts/dev.py test {{args}}
+# Lint + typecheck + test (pytest), autofix by default; --no-fix to report only.
+# Extra args go to pytest; use `--` to forward dash-flagged args (e.g. `just t -- -k expr`).
+[arg('fix', long='no-fix', value='')]
+test fix='--fix' *args: (typecheck fix)
+    uv run --group test pytest {{args}}
 
 alias i := install
 

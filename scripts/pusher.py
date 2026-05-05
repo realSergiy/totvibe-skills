@@ -1,10 +1,3 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.14"
-# dependencies = [
-#   "typer>=0.15",
-# ]
-# ///
 """pusher — push the current branch and either open a draft PR or finalize one.
 
 Default flow (no flags) pushes the current branch and opens a draft PR against
@@ -77,8 +70,20 @@ def main(
 
     pr = _pr_view()
     if pr is None:
+        template_path = REPO_ROOT / ".github" / "pull_request_template.md"
         draft_flag = [] if ready else ["--draft"]
-        _gh("pr", "create", "--base", "main", "--fill", *draft_flag, capture=False)
+        _gh(
+            "pr",
+            "create",
+            "--base",
+            "main",
+            "--title",
+            branch,
+            "--body-file",
+            str(template_path),
+            *draft_flag,
+            capture=False,
+        )
         pr = _pr_view()
         assert pr is not None, "PR creation succeeded but `gh pr view` failed"
     elif ready:

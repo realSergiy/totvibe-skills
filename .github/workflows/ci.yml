@@ -11,44 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-md:
-    name: lint (rumdl)
+  ci:
+    name: ci
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8.1.0
-        with:
-          enable-cache: true
-      - name: rumdl
-        run: uvx rumdl@latest check
-
-  lint-py:
-    name: lint (ruff)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8.1.0
-        with:
-          enable-cache: true
-      - run: uv sync --group lint
-      - run: uv run --group lint ruff check
-
-  typecheck:
-    name: typecheck (pyright)
-    runs-on: ubuntu-latest
-    needs: [lint-md, lint-py]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8.1.0
-        with:
-          enable-cache: true
-      - run: uv sync --group typecheck
-      - run: uv run --group typecheck pyright
-
-  test:
-    name: test (pytest)
-    runs-on: ubuntu-latest
-    needs: typecheck
     steps:
       - uses: actions/checkout@v6
         with:
@@ -56,5 +21,29 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: true
-      - run: uv sync --group test
-      - run: uv run --group test pytest
+      - run: uv sync --all-groups
+      - run: uv run --no-sync rumdl check
+      - run: uv run --no-sync ruff check
+      - run: uv run --no-sync pyright
+      - run: uv run --no-sync pytest
+
+  claude-code-review:
+    name: claude code review
+    needs: ci
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
