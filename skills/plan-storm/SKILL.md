@@ -1,9 +1,9 @@
 ---
 name: plan-storm
-description: Run an interactive brainstorming session that produces and continuously refines a `plan.md` for a new project, feature, or initiative. Each round writes/rewrites the plan, then asks up to three numbered, option-rich interactions (clarification, creative idea, or challenge) and reports a readiness percentage that may go up or down. Use this skill whenever the user invokes `/plan-storm`, says "let's brainstorm a plan / project / feature", wants help thinking through requirements before any code is written, presents a rough idea and asks for help shaping it, or wants to pressure-test an idea with options and challenges. Works for greenfield projects and for new features inside existing ones. Do NOT use this skill once a plan exists and the user is already implementing — use it only at the brainstorming / shaping stage.
+description: Run an interactive brainstorming session that produces and continuously refines a `plan.md` for a new project, feature, or initiative. Each round writes/rewrites the plan, then asks up to three numbered, option-rich interactions (clarification, creative idea, challenge, or recommendation) and reports a readiness percentage that may go up or down. Use this skill whenever the user invokes `/plan-storm`, says "let's brainstorm a plan / project / feature", wants help thinking through requirements before any code is written, presents a rough idea and asks for help shaping it, or wants to pressure-test an idea with options and challenges. Works for greenfield projects and for new features inside existing ones. Do NOT use this skill once a plan exists and the user is already implementing — use it only at the brainstorming / shaping stage.
 metadata:
   kind: prompt
-  version: "0.1.1"
+  version: "0.2.0"
 ---
 
 # plan-storm
@@ -14,11 +14,16 @@ The artifact is the plan. The plan lives at `plan/<name>.md`, where `<name>` is 
 
 **Picking the name (round 1 only).** On the very first round, before writing anything to disk, derive `<name>`:
 
-1. If the user's opening message contains an obvious noun phrase for the thing being built ("a sticky-notes widget", "an OSS sponsor tracker"), turn that into a 1–3 word kebab-case slug.
+1. If the user's opening message *names* the thing as a name choice ("call this `sticky-notes`", "let's name it `sponsor-tracker`"), turn that into a 1–3 word kebab-case slug.
 2. If the rough idea is a feature being added to an existing project, name the slug after the feature, not the project (e.g. `plan/dark-mode.md`, not `plan/myapp-dark-mode.md`).
-3. If you genuinely can't tell what to call it, pick a placeholder like `plan/draft.md` and make naming the project your very first clarification interaction. Once the user names it, rename the file (`mv plan/draft.md plan/<chosen-name>.md`) before the next round.
+3. **Otherwise — including when the brief contains a working term that wasn't presented as a name choice ("create a new `workitem` skill", "a dashboard for fleet sensors") — default to a placeholder slug** (`plan/draft.md`, or `plan/draft-N.md` if it already exists). Working language is not a commitment; users often want to see the shape before naming. Surface naming as an early Clarification interaction (round 1 or 2) rather than auto-picking from the brief.
 
-Tell the user the path you chose in one sentence on round 1 ("I'll save the plan to `plan/sticky-notes.md`."). If they push back, rename the file.
+Tell the user the path you chose in one sentence on round 1, and **proactively reassure them rename is cheap**: "Plan saved to `plan/draft.md`. Rename anytime — just say so." When a placeholder is in use, the round-1 (or round-2) naming Clarification looks like:
+
+> ### Interaction n — Clarification: name?
+> Working term in your brief: `<term>`. Suggestions: `<foo>`, `<bar>`, `<baz>`. Or write your own. (Defer if you'd rather see more shape first — we can rename anytime.)
+
+If the user later picks a name, rename the file (`mv plan/draft.md plan/<chosen-name>.md`) before the next round.
 
 Every round ends with the plan on disk in a more refined state than it started. **The plan is the source of truth — re-read it from disk at the start of every round** in case the user edited it between turns.
 
@@ -69,28 +74,50 @@ flowchart TD
     Stop -->|Yes| Summary(["Final summary — plan is ready"])
 ```
 
+### Pivot detection
+
+When absorbing the user's reply, check if it:
+
+- introduces a load-bearing dependency or composition that wasn't in the previous plan,
+- inverts a `[DECIDED]` architectural choice,
+- changes the project from "self-contained" to "wrapper / orchestrator / integration",
+- shifts the primary user or consumer.
+
+If yes, **call it out explicitly**: tell the user "this is a pivot, not a refinement — I'm restructuring the plan back toward round-1 shape." Drop readiness substantially (typically −15% to −25%), do a partial rewrite of the plan rather than an in-place edit, and use the next round's interactions to probe the new shape (more like round-1 questions than convergence questions).
+
+Three benefits: (1) signals to the user that prior rounds' detail won't all carry forward, (2) gives you license to do a bigger plan rewrite without it feeling like backtracking, (3) avoids the awkward stage of grafting new constraints onto stale architecture. Recognising "we're not refining anymore, we're re-architecting" is a key skill of a brainstorming partner — silently absorbing a pivot and grinding on with the existing plan structure produces a worse plan and wastes rounds.
+
 ### Round 1 specifically
 
 Round 1 is different because the plan doesn't exist yet.
 
-1. Extract every concrete fact from the user's opening message — domain, target user, problem, anything they've already decided. Don't invent details; if they said "a dashboard" don't decide it's a web dashboard yet.
-2. Pick the file name (per the rules above) and write a draft plan to `plan/<name>.md` (use the template in the next section). Sections you genuinely don't know about yet get a one-line `[OPEN]` placeholder, not invented filler.
-3. Compute readiness — for a fresh idea this is usually 10–25%.
-4. Ask 1–3 interactions focused on the *foundational* questions: who is this for, what problem does it solve, what does v1 success look like. Do not jump to tech choices on round 1 unless the user explicitly asks.
+1. **When the project lives inside a visible codebase** (e.g. SKILL.md is being drafted inside a skill monorepo, a feature is being added to a clear repo), **proactively scan for related code, skills, or peer projects before drafting** and surface anything relevant in the round-1 framing. Integration context is load-bearing for tools that compose with others, and it's much cheaper to surface in round 1 than to discover via mid-session pivot.
+2. Extract every concrete fact from the user's opening message — domain, target user, problem, anything they've already decided. Don't invent details; if they said "a dashboard" don't decide it's a web dashboard yet.
+3. Pick the file name (per the rules above) and write a draft plan to `plan/<name>.md` (use the template in the next section). Sections you genuinely don't know about yet get a one-line `[OPEN]` placeholder, not invented filler.
+4. Compute readiness — for a fresh idea this is usually 10–25%.
+5. Ask 1–3 interactions focused on the *foundational* questions: who is this for, what problem does it solve, what does v1 success look like. Do not jump to tech choices on round 1 unless the user explicitly asks.
+6. **Always include at least one Clarification targeting integration context.** Round-1 framing tends to drive the conversation *inward* (vision, users, scenarios) when the load-bearing questions are often *outward* — and latent integration requirements that surface in rounds 3–5 are the leading cause of mid-session re-architecture. Sample prompts (pick what fits):
+   - "What other tools / services / skills does this need to compose with — at runtime or via hand-off?"
+   - "Who or what consumes this besides the user invoking it directly? Future agents, scheduled jobs, other team members?"
+   - "Are there alternative invocation paths or escape hatches we should preserve (e.g. manual use without the surrounding orchestration)?"
+   - "What in the surrounding system constrains this — auth model, naming conventions, deployment targets, peer projects?"
+
+   Integration findings get logged in §6 Constraints, not invented inside the project bounds.
 
 ---
 
 ## Interactions: format and quality
 
-Each round presents **up to 3** interactions. Use fewer when fewer questions matter — three trivial questions waste a round. Each interaction is one of these three types; mix them as the moment calls for.
+Each round presents **up to 3** interactions. Use fewer when fewer questions matter — three trivial questions waste a round. Each interaction is one of these four types; mix them as the moment calls for.
 
 | Type | When to use |
 | --- | --- |
 | **Clarification** | The user said something ambiguous or left a gap that blocks downstream decisions. |
 | **Creative idea** | A design space is wide open and the user would benefit from seeing concrete shapes before choosing. |
 | **Challenge** | The user proposed something that contradicts itself, breaks a stated constraint, scales poorly, or is solving a problem they didn't actually have. |
+| **Recommendation** | You have analysis the user hasn't (architectural patterns, prior-art tradeoffs, technical-feasibility constraints) and a clear pick with reasoning is more valuable than a balanced menu. Typical triggers: the user just asked "which is better?", prior art makes one option obvious, or you'd be giving the same recommendation across every plausible follow-up. Brainstorming is a partnership; holding back strong analysis to be neutral wastes the user's time. |
 
-### Format every interaction this way
+### Format for Clarification, Creative idea, and Challenge
 
 ```markdown
 ### Interaction <n> — <Type>: <one-line topic>
@@ -101,6 +128,23 @@ Each round presents **up to 3** interactions. Use fewer when fewer questions mat
 2. **<Short option name>** — <Concrete description in one sentence.> *Tradeoff:* <what you give up>.
 3. **<Short option name>** — <Concrete description in one sentence.> *Tradeoff:* <what you give up>.
 4. Write your own.
+```
+
+### Format for Recommendation
+
+Used when you lead with a pick instead of a menu. The "what would change my mind" line is **load-bearing** — it gives the user explicit handles to push back without you feeling defensive about the recommendation.
+
+```markdown
+### Interaction <n> — Recommendation: <one-line topic>
+
+**My pick: <option>** — <one paragraph laying out the reasoning, including what would change my mind>.
+
+Alternatives considered:
+
+1. **<alt>** — why it's worse: <one line>.
+2. **<alt>** — why it's worse: <one line>.
+
+If you'd rather a different direction, reply with the number or write your own.
 ```
 
 At the end of the round, a single line tells the user how to reply, e.g.: `Reply like "1: 2, 2: my own answer, 3: skip" — or just answer in prose, I'll match it up.`
@@ -117,6 +161,7 @@ Use these moves to find them:
 - **State the tradeoff out loud.** Each option ends with what it costs you. If you can't articulate the tradeoff, the option isn't real.
 - **Name options with personality.** "Single fat process" beats "Option A". Names stick in the user's head.
 - **Three distinct, not three-and-a-clone.** If two of your options would lead to the same code, drop one.
+- **Lead with a pick when you have the analysis.** Use the Recommendation format — pick + reasoning + "what would change my mind" — instead of a balanced menu when prior art is clear or you've done structured analysis the user hasn't. Holding back to look neutral wastes their time. Reserve menus for genuinely open design spaces where the user's domain knowledge should drive.
 
 ### When to challenge instead of accept
 
