@@ -1,8 +1,9 @@
-"""pusher — push the current branch and either open a draft PR or finalize one.
+"""pusher — push the current branch and either open a draft PR or mark it ready.
 
 Default flow (no flags) pushes the current branch and opens a draft PR against
 `main`, or leaves an existing draft alone. Pass `--ready` (or `-r`) to mark the
-PR ready, wait for required checks to pass, and squash-merge.
+PR ready and enable auto-merge: GitHub will squash-merge and delete the branch
+once required checks pass and review conversations are resolved.
 
 Only committed changes are pushed; staged-but-uncommitted changes stay local.
 """
@@ -55,9 +56,9 @@ def _clean_body(body: str) -> str:
 
 
 def main(
-    ready: bool = typer.Option(False, "--ready", "-r", help="Mark PR ready, wait for checks, then squash-merge."),
+    ready: bool = typer.Option(False, "--ready", "-r", help="Mark PR ready and enable auto-merge."),
 ) -> None:
-    """Push the current branch and either open a draft PR or finalize one."""
+    """Push the current branch and either open a draft PR or mark it ready."""
     branch = _current_branch()
     if not branch:
         typer.echo("not on any branch (detached HEAD?)", err=True)
@@ -66,9 +67,16 @@ def main(
         typer.echo("refusing to run on main", err=True)
         raise typer.Exit(1)
 
+    pr = _pr_view()
+    if pr is not None and pr.get("state") == "MERGED":
+        typer.echo(f"PR #{pr['number']} merged; switching to main and deleting local branch '{branch}'")
+        _run("git", "checkout", "main")
+        _run("git", "pull", "--ff-only")
+        _run("git", "branch", "-D", branch)
+        return
+
     _run("git", "push", "-u", "origin", branch)
 
-    pr = _pr_view()
     if pr is None:
         template_path = REPO_ROOT / ".github" / "pull_request_template.md"
         draft_flag = [] if ready else ["--draft"]
@@ -97,18 +105,13 @@ def main(
 
     url = pr["url"]
     number = pr["number"]
+
     if not ready:
         typer.echo(f"PR (draft): {url}")
         return
 
-    typer.echo(f"PR: {url}")
-    typer.echo("waiting for checks…")
-    checks = _gh("pr", "checks", str(number), "--watch", "--fail-fast", check=False, capture=False)
-    if checks.returncode != 0:
-        typer.echo("checks failed; not merging.", err=True)
-        raise typer.Exit(checks.returncode)
-
-    _gh("pr", "merge", str(number), "--squash", "--delete-branch", capture=False)
+    _gh("pr", "merge", str(number), "--auto", "--squash", "--delete-branch", check=False, capture=False)
+    typer.echo(f"PR (ready, auto-merge enabled): {url}")
 
 
 if __name__ == "__main__":
