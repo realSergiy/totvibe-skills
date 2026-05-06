@@ -39,7 +39,7 @@ uninstall name:
 
 alias p := push
 
-# Push current branch; opens a draft PR or finalizes (-r merges after checks)
+# Push current branch; opens a draft PR (-r marks ready and enables auto-merge)
 push *flags:
     @uv run scripts/pusher.py {{flags}}
 

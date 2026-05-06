@@ -20,7 +20,7 @@ just i peek      # install a single skill globally (default source: github main)
 just i           # install every skill whose source version differs from the installed copy
 FORCE=1 just i   # force-reinstall every skill, ignoring version match
 just u peek      # uninstall a skill globally
-just p           # push branch + open draft PR (pass -r to mark ready, wait for checks, squash-merge)
+just p           # push branch + open draft PR (pass -r to mark ready and enable GitHub auto-merge)
 just b mermaid   # bump a skill's version (default minor; -p for patch, --major; idempotent + higher-wins)
 ```
 
