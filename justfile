@@ -4,24 +4,24 @@ sync:
 
 alias l := lint
 
-# Lint (rumdl + ruff), autofix by default; pass --no-fix to report only
-[arg('fix', long='no-fix', value='')]
+# Lint (rumdl + ruff), autofix by default; pass --check / -c to report only
+[arg('fix', long='check', short='c', value='')]
 lint fix='--fix':
     uv run --group lint rumdl check {{fix}}
     uv run --group lint ruff check {{fix}}
 
 alias tc := typecheck
 
-# Lint then typecheck (pyright), autofix by default; --no-fix to report only
-[arg('fix', long='no-fix', value='')]
+# Lint then typecheck (pyright), autofix by default; --check / -c to report only
+[arg('fix', long='check', short='c', value='')]
 typecheck fix='--fix': (lint fix)
     uv run --group typecheck pyright
 
 alias t := test
 
-# Lint + typecheck + test (pytest), autofix by default; --no-fix to report only.
+# Lint + typecheck + test (pytest), autofix by default; --check / -c to report only.
 # Extra args go to pytest; use `--` to forward dash-flagged args (e.g. `just t -- -k expr`).
-[arg('fix', long='no-fix', value='')]
+[arg('fix', long='check', short='c', value='')]
 test fix='--fix' *args: (typecheck fix)
     uv run --group test pytest {{args}}
 

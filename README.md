@@ -21,7 +21,7 @@ Requires [uv](https://docs.astral.sh/uv/), [just](https://just.systems/), and th
 
 ```bash
 just sync        # install all deps
-just l           # lint (autofixes; pass --no-fix to skip)
+just l           # lint (autofixes; pass --check / -c to skip)
 just tc          # typecheck (lints first)
 just t           # test (typechecks and lints first)
 just i           # install every skill globally (from github main; force with FORCE=1)
