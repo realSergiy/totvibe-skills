@@ -30,7 +30,7 @@ just u <name>    # uninstall a skill
 just p           # push branch + open draft PR (-r marks ready, waits, squash-merges)
 ```
 
-Skills declaring a `bin` in `package.json` are linked into `PATH` via `npm link` on install.
+Skills declaring a `bin` in `package.json` are linked into `PATH` on install — via `npm link`, `bun link`, or `pnpm link --global` depending on which package manager is on `PATH`.
 
 ## GitHub apps
 
