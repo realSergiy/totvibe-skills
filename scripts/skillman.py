@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
+from typing import NamedTuple
 
 import typer
 from skills_ref import read_properties
@@ -28,6 +30,28 @@ ENV_D_DIR = Path.home() / ".config" / "environment.d"
 BASHRC = Path.home() / ".bashrc"
 ENV_FILE = "env.toml"
 DEFAULT_SOURCE = "github:realSergiy/totvibe-skills"
+
+
+class Runner(NamedTuple):
+    dlx: str
+    link: tuple[str, ...]
+    unlink: tuple[str, ...]
+
+
+RUNNERS: tuple[Runner, ...] = (
+    Runner("npx", ("npm", "link"), ("npm", "unlink")),
+    Runner("bunx", ("bun", "link"), ("bun", "unlink")),
+    Runner("pnpx", ("pnpm", "link", "--global"), ("pnpm", "unlink", "--global")),
+)
+
+
+def _find_runner() -> Runner:
+    for runner in RUNNERS:
+        if shutil.which(runner.dlx):
+            return runner
+    tried = ", ".join(r.dlx for r in RUNNERS)
+    raise typer.BadParameter(f"no JS package runner found on PATH; tried: {tried}")
+
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
@@ -124,14 +148,15 @@ def _run(*args: str, cwd: Path | None = None, check: bool = True) -> None:
 def _install_one(name: str, source: str) -> None:
     if not (SKILLS_DIR / name / "SKILL.md").exists():
         raise typer.BadParameter(f"unknown skill: {name}")
-    typer.echo(f"==> installing {name} (source: {source})")
-    _run("npx", "skills", "add", source, "-g", "--skill", name, "-y", cwd=REPO_ROOT)
+    runner = _find_runner()
+    typer.echo(f"==> installing {name} (source: {source}, runner: {runner.dlx})")
+    _run(runner.dlx, "skills", "add", source, "-g", "--skill", name, "-y", cwd=REPO_ROOT)
     target = INSTALL_ROOT / name
     py_path = target / f"{name}.py"
     if py_path.exists():
         py_path.chmod(py_path.stat().st_mode | 0o111)
     if (target / "package.json").exists():
-        _run("npm", "link", cwd=target)
+        _run(*runner.link, cwd=target)
     _apply_env(name)
 
 
@@ -148,7 +173,7 @@ def install(
         "--source",
         "-s",
         envvar="SKILLMAN_SOURCE",
-        help='Where `npx skills add` reads from. Defaults to the GitHub repo (always main). Pass "." to install from the local working tree.',
+        help='Where `skills add` reads from. Defaults to the GitHub repo (always main). Pass "." to install from the local working tree.',
     ),
 ) -> None:
     """Install one skill, or every skill whose source version differs from the installed copy."""
@@ -166,10 +191,11 @@ def install(
 @app.command()
 def uninstall(name: str = typer.Argument(..., help="Skill to uninstall.")) -> None:
     """Uninstall a skill and clean up its env vars / conf file."""
+    runner = _find_runner()
     target = INSTALL_ROOT / name
     if (target / "package.json").exists():
-        _run("npm", "unlink", cwd=target, check=False)
-    _run("npx", "skills", "remove", name, "-g", "-y")
+        _run(*runner.unlink, cwd=target, check=False)
+    _run(runner.dlx, "skills", "remove", name, "-g", "-y")
     _remove_env(name)
 
 
