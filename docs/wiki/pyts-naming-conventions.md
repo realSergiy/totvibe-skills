@@ -1,4 +1,8 @@
-# Naming conventions (Python and TypeScript)
+---
+title: CLAUDE.md
+---
+
+## Naming conventions (Python and TypeScript)
 
 These rules describe **which words to pick** for names — not how to case them. Apply your target language's idiomatic casing on top. Examples are written as space-separated word phrases so they read the same in either language.
 
