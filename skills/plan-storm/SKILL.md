@@ -1,6 +1,6 @@
 ---
 name: plan-storm
-description: Run an interactive brainstorming session that produces and continuously refines a `plan.md` for a new project, feature, or initiative. Each round writes/rewrites the plan, then asks up to three numbered, option-rich interactions (clarification, creative idea, challenge, or recommendation) and reports a readiness percentage that may go up or down. Use this skill whenever the user invokes `/plan-storm`, says "let's brainstorm a plan / project / feature", wants help thinking through requirements before any code is written, presents a rough idea and asks for help shaping it, or wants to pressure-test an idea with options and challenges. Works for greenfield projects and for new features inside existing ones. Do NOT use this skill once a plan exists and the user is already implementing — use it only at the brainstorming / shaping stage.
+description: Run an interactive brainstorming session that produces and continuously refines a plan file (`plan/plan-<name>.md`) for a new project, feature, or initiative. Each round writes/rewrites the plan, then asks up to three numbered, option-rich interactions (clarification, creative idea, challenge, or recommendation) and reports a readiness percentage that may go up or down. Use this skill whenever the user invokes `/plan-storm`, says "let's brainstorm a plan / project / feature", wants help thinking through requirements before any code is written, presents a rough idea and asks for help shaping it, or wants to pressure-test an idea with options and challenges. Works for greenfield projects and for new features inside existing ones. Do NOT use this skill once a plan exists and the user is already implementing — use it only at the brainstorming / shaping stage.
 metadata:
   kind: prompt
   version: "0.3.0"
@@ -8,9 +8,9 @@ metadata:
 
 # plan-storm
 
-A brainstorming partner that turns a rough idea into a tight, ship-ready `plan.md` through short, option-rich rounds.
+A brainstorming partner that turns a rough idea into a tight, ship-ready plan file through short, option-rich rounds.
 
-The artifact is the plan, at `plan/<name>.md`. **Round 1 is interactions only — no file yet.** The opening idea is too thin to plan from, so first ask the foundational questions; then, once the user has answered, create the file and write the first real draft. By then `<name>` is an easy call: a short, lowercase, kebab-case slug — your best guess from the idea plus their answers (name a feature after the feature, not the host project: `plan/dark-mode.md`, not `plan/myapp-dark-mode.md`). Good enough beats perfect. Create `plan/` if missing; if the user gives a path, use it.
+The artifact is the plan, at `plan/plan-<name>.md`. **Round 1 is interactions only — no file yet.** The opening idea is too thin to plan from, so first ask the foundational questions; then, once the user has answered round 1 and you've absorbed it, create the file and write the first real draft — at the top of round 2, before that round's interactions. By then `<name>` is an easy call: a short, lowercase, kebab-case slug — your best guess from the idea plus their answers (name a feature after the feature, not the host project: `plan/plan-dark-mode.md`, not `plan/plan-myapp-dark-mode.md`). Good enough beats perfect. Create `plan/` if missing; if the user gives a path, use it.
 
 From round 2 on, keep refining the plan, ending each round with it more refined than it started.
 
@@ -40,10 +40,10 @@ Every round follows the same shape: absorb what was just learned, write the upda
 
 ```mermaid
 flowchart TD
-    Invoke(["/plan-storm + rough idea"]) --> R1["Round 1: interactions only<br/>(no file — idea too thin to plan from)"]
+    Invoke(["/plan-storm + rough idea"]) --> R1["Round 1: rough readiness + 1–3 foundational interactions<br/>(no file yet — idea too thin to plan from)"]
     R1 --> First["User answers round 1"]
     First --> Absorb["Absorb user's last reply<br/>Update [DECIDED] / [PROPOSED] / [OPEN]<br/>Challenge incoherent answers, don't silently write them"]
-    Absorb --> Write["Write updated plan to disk<br/>(round 2 creates the file)"]
+    Absorb --> Write["Write the updated plan to disk<br/>(round 2's first pass creates the file under plan/)"]
     Write --> Score["Compute readiness % and delta"]
     Score --> Pick["Identify what's blocking 100%<br/>Pick 1–3 most consequential open threads"]
     Pick --> Present["Present readiness + 1–3 interactions<br/>(each: 2–4 options + pick + write-your-own)"]
@@ -52,6 +52,8 @@ flowchart TD
     Stop -->|No| Absorb
     Stop -->|Yes| Summary(["Final summary — plan is ready"])
 ```
+
+Assume the user engages with at least one interaction each round. Resolve the answered ones; leave skipped threads `[OPEN]` and re-ask one only if it's still the most pressing next round.
 
 ### Pivot detection
 
@@ -62,7 +64,7 @@ When absorbing the user's reply, check if it:
 - changes the project from "self-contained" to "wrapper / orchestrator / integration",
 - shifts the primary user or consumer.
 
-If yes, **call it out explicitly**: tell the user "this is a pivot, not a refinement — I'm restructuring the plan back toward round-1 shape." Drop readiness substantially (typically −15% to −25%), rewrite the affected sections — the whole plan if the pivot runs deep — rather than patching in place, and use the next round's interactions to probe the new shape (more like round-1 questions than convergence questions).
+If yes, **call it out explicitly**: tell the user "this is a pivot, not a refinement — I'm restructuring the plan back toward round-1 shape." Drop readiness back to the band the reopened questions justify (recompute from the rubric — a deep pivot usually lands in the 20–40% range again), rewrite the affected sections — the whole plan if the pivot runs deep — rather than patching in place, and use the next round's interactions to probe the new shape (more like round-1 questions than convergence questions).
 
 A pivot isn't backtracking — when brainstorming surfaces a materially better direction (often from your own Creative idea or a Challenge the user runs with), a full rewrite costs far less than shipping the wrong plan. The real mistake is the opposite: silently grafting new direction onto stale structure, which produces a worse plan and wastes rounds.
 
@@ -142,7 +144,7 @@ A good challenge: "You picked a per-user encryption key, but you said v1 stores 
 
 ---
 
-## The plan.md structure
+## The plan structure
 
 The plan must be a **living document of decisions, not a code spec**. It contains zero code and zero pseudo-code. It contains functional requirements, architecture sketches in prose, and high-level tech choices — and crucially, the *why* behind each.
 
@@ -212,6 +214,7 @@ This is the recommended skeleton. **Adapt it to the project** — drop sections 
 
 A few non-obvious rules about maintaining the plan:
 
+- **Keep the header in sync.** The plan's `Status: … readiness X%` and `Last updated` lines must match the readiness you report that round — update both on every write.
 - **Update in place, don't append.** When the user resolves an `[OPEN]` item, change it to `[DECIDED]` with the answer inline. Don't leave a paragraph saying "previously we thought X but now Y" — the decisions log captures that compactly.
 - **Rewrite when reality shifts.** If the user reverses a load-bearing decision (e.g., "actually let's target mobile, not desktop"), be willing to restructure whole sections. Move the discarded direction to the decisions log with one line on why.
 - **Stay honest about uncertainty.** When the user picks an option but its consequences are unclear, mark the resulting line `[PROPOSED]` and add a follow-up open question rather than `[DECIDED]`.
@@ -259,7 +262,7 @@ The bias does *not* mean "lower quality" — it means "lower scope, then iterate
 
 ## Readiness percentage
 
-Report readiness at the top of every round as `Readiness: X% (+/−Δ% from last round)` — a rough estimate, not a precise score; its job is to give the user a sense of momentum.
+Report readiness at the top of every round as `Readiness: X% [+/−Δ% from last round]` — a rough estimate, not a precise score; its job is to give the user a sense of momentum. It's a read-off-the-rubric number, not a gut feel: match the plan's current state to a band below, and let each round's delta be the net of what actually changed (a resolved decision nudges up, a freshly surfaced unknown nudges down). That keeps it rough but reproducible.
 
 A workable rubric:
 
