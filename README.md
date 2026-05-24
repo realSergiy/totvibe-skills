@@ -21,7 +21,7 @@ Requires [uv](https://docs.astral.sh/uv/), [just](https://just.systems/), and th
 
 ```bash
 just sync        # install all deps
-just l           # lint (autofixes; pass --no-fix to skip)
+just l           # lint (autofixes; pass --check / -c to skip)
 just tc          # typecheck (lints first)
 just t           # test (typechecks and lints first)
 just i           # install every skill globally (from github main; force with FORCE=1)
@@ -30,7 +30,7 @@ just u <name>    # uninstall a skill
 just p           # push branch + open draft PR (-r marks ready, waits, squash-merges)
 ```
 
-Skills declaring a `bin` in `package.json` are linked into `PATH` via `npm link` on install.
+Skills declaring a `bin` in `package.json` are linked into `PATH` on install — via `npm link`, `bun link`, or `pnpm link --global` depending on which package manager is on `PATH`.
 
 ## GitHub apps
 
