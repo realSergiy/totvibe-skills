@@ -191,11 +191,12 @@ def install(
 @app.command()
 def uninstall(name: str = typer.Argument(..., help="Skill to uninstall.")) -> None:
     """Uninstall a skill and clean up its env vars / conf file."""
-    runner = _find_runner()
     target = INSTALL_ROOT / name
     if (target / "package.json").exists():
-        _run(*runner.unlink, cwd=target, check=False)
-    _run(runner.dlx, "skills", "remove", name, "-g", "-y")
+        for runner in RUNNERS:
+            if shutil.which(runner.unlink[0]):
+                _run(*runner.unlink, cwd=target, check=False)
+    _run(_find_runner().dlx, "skills", "remove", name, "-g", "-y")
     _remove_env(name)
 
 
